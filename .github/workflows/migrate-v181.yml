@@ -187,3 +187,5 @@ jobs:
           EOF
 
           gh release create v1.8.1 /tmp/ColorOS_AOD_Enhance-v1.8.1-arm64-v8a.apk /tmp/SHA256SUMS.txt /tmp/SIGNATURE_INFO.txt --title "ColorOS AOD Enhance v1.8.1" --notes-file /tmp/release-notes.md --latest
+
+# trigger migration
