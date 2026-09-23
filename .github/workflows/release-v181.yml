@@ -1,0 +1,105 @@
+name: Publish v1.8.1 Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-v181.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --channel=3 "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s "$ANDROID_HOME/platforms/android-37.0" "$ANDROID_HOME/platforms/android-37"
+          fi
+
+      - name: Build audited formal release
+        run: |
+          grep -q "versionCode = 23" app/build.gradle
+          grep -q "versionName = '1.8.1'" app/build.gradle
+          grep -q "include 'arm64-v8a'" app/build.gradle
+          ! grep -q "armeabi-v7a" app/build.gradle
+          test ! -f app/src/main/kotlin/com/op/aod/enhance/hook/AodTelemetry.kt
+          ! grep -R -n -E "AodTelemetry|AOD_TELEMETRY|DebugFileLogger|DebugFileLogStore|AodConfigProvider|MANAGE_EXTERNAL_STORAGE|DEBUG_FILE_LOG" app/src/main/kotlin app/src/main/AndroidManifest.xml app/build.gradle
+
+          mkdir -p /tmp/aod-signing
+          PASS="$(openssl rand -hex 24)"
+          keytool -genkeypair -keystore /tmp/aod-signing/release.jks -storepass "$PASS" -keypass "$PASS" -alias aod_release -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=ColorOS AOD Enhance, O=AOD Enhance, C=US"
+          {
+            echo "storeFile=/tmp/aod-signing/release.jks"
+            echo "storePassword=$PASS"
+            echo "keyAlias=aod_release"
+            echo "keyPassword=$PASS"
+          } > keystore.properties
+
+          chmod +x gradlew
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=1
+          kotlin.daemon.jvmargs=-Xmx1g
+          EOF
+          ./gradlew --no-daemon --max-workers=1 clean testDebugUnitTest lintRelease assembleRelease
+
+          APK=app/build/outputs/apk/release/app-arm64-v8a-release.apk
+          test -f "$APK"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/SIGNATURE_INFO.txt
+          "$BT/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='23'" /tmp/badging.txt
+          grep -q "versionName='1.8.1'" /tmp/badging.txt
+          unzip -p "$APK" assets/xposed_init | grep -q "com.op.aod.enhance.HookEntryXposed"
+          ! unzip -l "$APK" | grep -q "lib/armeabi-v7a"
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          ! grep -q "AodTelemetry" /tmp/dex-strings.txt
+          ! grep -q "AOD_TELEMETRY" /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/SHA256SUMS.txt
+          cp "$APK" /tmp/ColorOS_AOD_Enhance-v1.8.1-arm64-v8a.apk
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete v1.8.1 --yes >/dev/null 2>&1 || true
+          cat > /tmp/release-notes.md <<'EOF'
+          ## ColorOS AOD Enhance v1.8.1 正式版
+
+          ### 功能
+          - AOD 暗光/亮光初始亮度支持自定义或系统默认。
+          - AOD 自动亮度倍率支持自定义或系统默认。
+          - AOD 最长显示时间支持系统默认、30 秒、1/5/10/30/60 分钟、始终显示和自定义 1–1440 分钟。
+          - 单击防误触，双击保持正常。
+          - 可选择低光/特殊规则下保持 AOD。
+          - 配置通道使用 YukiHookPrefsBridge / XSharedPreferences。
+
+          ### 正式版收口
+          - 删除 Debug Telemetry 和周期刷新率/功耗采样。
+          - 删除文件日志、ContentProvider 配置链及公共存储日志权限。
+          - Release 构建启用 R8 和资源压缩。
+          - 仅保留 arm64-v8a。
+          - 不写 OPPO ADFR/min_fps，LTPO 继续由系统自动管理。
+
+          ### 验收
+          unit test、lintRelease、assembleRelease、APK 签名、Xposed 入口、ABI 与 Debug 残留检查均通过。
+
+          **安装提示：** 如果旧版本签名不同，需要先卸载旧版。
+          EOF
+          gh release create v1.8.1             /tmp/ColorOS_AOD_Enhance-v1.8.1-arm64-v8a.apk             /tmp/SHA256SUMS.txt             /tmp/SIGNATURE_INFO.txt             --title "ColorOS AOD Enhance v1.8.1"             --notes-file /tmp/release-notes.md             --latest
