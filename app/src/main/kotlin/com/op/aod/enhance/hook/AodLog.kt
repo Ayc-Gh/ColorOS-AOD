@@ -1,26 +1,16 @@
 package com.op.aod.enhance.hook
 
 import android.util.Log
-import com.op.aod.enhance.BuildConfig
 
-/** Lightweight logcat logger. Release builds suppress verbose/debug lifecycle logs. */
+/** Detailed-log build: keep all runtime levels enabled in release builds. */
 internal object AodLog {
     private const val TAG = "AOD_Enhance"
     private const val MAX_MESSAGE_CHARS = 6000
 
-    fun d(event: String, message: String) {
-        if (BuildConfig.DEBUG) write(Log.DEBUG, event, message, null)
-    }
-
-    fun i(event: String, message: String) {
-        if (BuildConfig.DEBUG) write(Log.INFO, event, message, null)
-    }
-
-    fun w(event: String, message: String, error: Throwable? = null) =
-        write(Log.WARN, event, message, error)
-
-    fun e(event: String, message: String, error: Throwable? = null) =
-        write(Log.ERROR, event, message, error)
+    fun d(event: String, message: String) = write(Log.DEBUG, event, message, null)
+    fun i(event: String, message: String) = write(Log.INFO, event, message, null)
+    fun w(event: String, message: String, error: Throwable? = null) = write(Log.WARN, event, message, error)
+    fun e(event: String, message: String, error: Throwable? = null) = write(Log.ERROR, event, message, error)
 
     private fun write(priority: Int, event: String, message: String, error: Throwable?) {
         val out = buildString {

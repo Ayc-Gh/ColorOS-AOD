@@ -12,11 +12,9 @@ class ModuleEntry : XposedModule() {
 
     override fun onModuleLoaded(param: ModuleLoadedParam) {
         processName = param.processName
-        log(
-            Log.INFO,
-            TAG,
-            "event=module_loaded process=${param.processName} api=${getApiVersion()} framework=${getFrameworkName()}",
-        )
+        val message = "event=module_loaded process=${param.processName} api=${getApiVersion()} framework=${getFrameworkName()}"
+        log(Log.INFO, TAG, message)
+        Log.i(TAG, message)
     }
 
     override fun onPackageReady(param: PackageReadyParam) {
@@ -25,15 +23,15 @@ class ModuleEntry : XposedModule() {
         if (pkg != SYSTEM_UI && pkg != OPLUS_AOD) return
 
         val process = processName
-        log(Log.INFO, TAG, "event=package_ready package=$pkg process=$process")
+        val readyMessage = "event=package_ready package=$pkg process=$process"
+        log(Log.INFO, TAG, readyMessage)
+        Log.i(TAG, readyMessage)
         runCatching {
             MainHook.install(this, param.classLoader, pkg)
         }.onFailure {
-            log(
-                Log.ERROR,
-                TAG,
-                "event=install_failed package=$pkg process=$process error=${it.stackTraceToString()}",
-            )
+            val errorMessage = "event=install_failed package=$pkg process=$process error=${it.stackTraceToString()}"
+            log(Log.ERROR, TAG, errorMessage)
+            Log.e(TAG, errorMessage)
         }
     }
 

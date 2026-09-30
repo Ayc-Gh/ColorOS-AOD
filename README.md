@@ -64,6 +64,30 @@ ColorOS AOD Enhance 是面向 ColorOS AOD（息屏显示）的 Xposed/LSPosed �
 - `targetApiVersion=102`，要求使用支持 libxposed API 102 的框架版本。
 - Hook 全部改为 libxposed `hook(...).intercept { chain -> ... }` 模型。
 
+## v1.9.1 详细日志版
+
+该版本在 v1.9.0 API 102 迁移版基础上启用完整运行日志：
+
+- Release 构建保留 DEBUG / INFO / WARN / ERROR。
+- 每次 libxposed Hook 命中记录 `HOOK_HIT`。
+- 保留亮度原始值/目标值、AOD 时长、配置读取、Hook 注册与异常日志。
+- 日志 TAG：`AOD_Enhance`。
+- 提供 `tools/capture-aod-log.sh`，可在 root 环境持续采集到 `/storage/emulated/0/Documents/ColorOS-AOD/log/`。
+
+Termux 示例：
+
+```sh
+su -c 'sh /path/to/capture-aod-log.sh'
+```
+
+也可以直接执行：
+
+```sh
+su -c 'mkdir -p /storage/emulated/0/Documents/ColorOS-AOD/log; logcat -v threadtime -s AOD_Enhance:* -f /storage/emulated/0/Documents/ColorOS-AOD/log/aod-detailed.log'
+```
+
+详细日志版用于问题定位，日志量明显高于普通版。
+
 ## 安装
 
 1. 安装构建出的 APK。
