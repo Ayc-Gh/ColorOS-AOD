@@ -316,7 +316,13 @@ internal object AodDurationHook {
         "system", "30s", "1m", "5m", "10m", "30m", "60m", "always", "custom",
     ).getOrElse(mode) { "system" }
 
-    private fun stateName(state: Int): String = runCatching { Display.stateToString(state) }.getOrElse { state.toString() }
+    private fun stateName(state: Int): String = when (state) {
+        Display.STATE_OFF -> "OFF(1)"
+        Display.STATE_ON -> "ON(2)"
+        Display.STATE_DOZE -> "DOZE(3)"
+        Display.STATE_DOZE_SUSPEND -> "DOZE_SUSPEND(4)"
+        else -> state.toString()
+    }
 
     private fun readIntField(instance: Any, name: String): Int? =
         (readField(instance, name) as? Number)?.toInt()
