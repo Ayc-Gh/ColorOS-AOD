@@ -16,7 +16,7 @@ ColorOS AOD Enhance 是面向 ColorOS AOD（息屏显示）的 Xposed/LSPosed �
 
 本仓库最初以已审计的上游源码为基线继续开发，并在此基础上增加配置桥接、AOD 显示时长控制、系统默认亮度选项等功能，同时对调试代码、跨进程配置和正式版构建流程进行了整理。
 
-## v1.8.1 正式版
+## v1.9.0 · libxposed API 102 迁移版
 
 ### AOD 亮度
 
@@ -44,7 +44,8 @@ ColorOS AOD Enhance 是面向 ColorOS AOD（息屏显示）的 Xposed/LSPosed �
 
 - 单击防误触，并保留双击唤醒逻辑。
 - 可选择在低光/特殊规则下保持 AOD。
-- 配置使用 YukiHookPrefsBridge / XSharedPreferences 跨进程读取。
+- 配置改用 libxposed Remote Preferences：模块 App 通过 XposedService 写入，Hook 进程通过 XposedModule 只读访问。
+- 首次升级会把旧版 `aod_config` 本地配置迁移到 Remote Preferences，尽量保留原有设置。
 
 ### 正式版收口
 
@@ -55,15 +56,23 @@ ColorOS AOD Enhance 是面向 ColorOS AOD（息屏显示）的 Xposed/LSPosed �
 - 当前 Release 仅提供 arm64-v8a。
 - 不强制写入 OPPO ADFR/min_fps；LTPO/ADFR 刷新率策略继续由 ColorOS 与面板驱动自动管理。
 
+## 现代 API 迁移
+
+- 已移除 `de.robv.android.xposed:api:82`、YukiHookAPI、KavaRef 和旧 `assets/xposed_init` 入口。
+- 模块入口改为 `io.github.libxposed.api.XposedModule`。
+- 使用 `META-INF/xposed/java_init.list`、`module.prop` 与 `scope.list`。
+- `targetApiVersion=102`，要求使用支持 libxposed API 102 的框架版本。
+- Hook 全部改为 libxposed `hook(...).intercept { chain -> ... }` 模型。
+
 ## 安装
 
-1. 安装 Release 页面提供的 APK。
-2. 在兼容的 Xposed/LSPosed 环境中启用模块。
+1. 安装构建出的 APK。
+2. 在支持 libxposed API 102 的 LSPosed/兼容框架中启用模块。
 3. 根据设备和系统实际情况设置模块作用域。
 4. 修改配置后按模块/系统提示使配置生效。
 
 > [!WARNING]
-> v1.8.1 Release 使用独立 Release 证书。如果设备上安装的是签名不同的旧 Debug/测试版，Android 可能不允许直接覆盖安装，需要先卸载旧版本。
+> 如果设备上安装的是签名不同的旧 Debug/测试版，Android 可能不允许直接覆盖安装，需要先卸载旧版本；相同签名升级时会保留本地配置并在框架服务可用后迁移到 Remote Preferences。
 
 ## 下载
 
