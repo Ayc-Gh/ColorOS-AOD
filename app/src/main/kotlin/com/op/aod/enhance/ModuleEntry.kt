@@ -29,7 +29,11 @@ class ModuleEntry : XposedModule() {
         runCatching {
             MainHook.install(this, param.classLoader, pkg)
         }.onFailure {
-            log(Log.ERROR, TAG, "event=install_failed package=$pkg process=$process", it)
+            log(
+                Log.ERROR,
+                TAG,
+                "event=install_failed package=$pkg process=$process error=${it.stackTraceToString()}",
+            )
         }
     }
 
