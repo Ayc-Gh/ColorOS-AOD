@@ -1,0 +1,124 @@
+name: Publish v1.9.0 Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-v190.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --channel=3 "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s "$ANDROID_HOME/platforms/android-37.0" "$ANDROID_HOME/platforms/android-37"
+          fi
+
+      - name: Build and verify v1.9.0
+        run: |
+          grep -q "versionCode = 24" app/build.gradle
+          grep -q "versionName = '1.9.0'" app/build.gradle
+          grep -q "include 'arm64-v8a'" app/build.gradle
+          grep -q "targetApiVersion=102" app/src/main/resources/META-INF/xposed/module.prop
+          grep -q "minApiVersion=102" app/src/main/resources/META-INF/xposed/module.prop
+          grep -q "com.op.aod.enhance.ModuleEntry" app/src/main/resources/META-INF/xposed/java_init.list
+          test ! -f app/src/main/assets/xposed_init
+          ! grep -R -n -E "de\\.robv\\.android\\.xposed|com\\.highcapable\\.yukihookapi|com\\.highcapable\\.kavaref|xposedminversion|xposedmodule" app/src/main app/build.gradle gradle/libs.versions.toml
+
+          mkdir -p /tmp/aod-signing
+          PASS="$(openssl rand -hex 24)"
+          keytool -genkeypair -keystore /tmp/aod-signing/release.jks -storepass "$PASS" -keypass "$PASS" -alias aod_release -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=ColorOS AOD Enhance, O=AOD Enhance, C=US"
+          {
+            echo "storeFile=/tmp/aod-signing/release.jks"
+            echo "storePassword=$PASS"
+            echo "keyAlias=aod_release"
+            echo "keyPassword=$PASS"
+          } > keystore.properties
+
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=1
+          kotlin.daemon.jvmargs=-Xmx1g
+          EOF
+
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 clean testDebugUnitTest lintRelease assembleRelease
+
+          APK=app/build/outputs/apk/release/app-arm64-v8a-release.apk
+          test -f "$APK"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/SIGNATURE_INFO.txt
+          "$BT/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='24'" /tmp/badging.txt
+          grep -q "versionName='1.9.0'" /tmp/badging.txt
+          unzip -p "$APK" META-INF/xposed/module.prop | grep -q "targetApiVersion=102"
+          unzip -p "$APK" META-INF/xposed/java_init.list | grep -q "com.op.aod.enhance.ModuleEntry"
+          ! unzip -l "$APK" | grep -q "assets/xposed_init"
+          ! unzip -l "$APK" | grep -q "lib/armeabi-v7a"
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          ! grep -q "de.robv.android.xposed" /tmp/dex-strings.txt
+          ! grep -q "YukiHookAPI" /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/SHA256SUMS.txt
+          cp "$APK" /tmp/ColorOS_AOD_Enhance-v1.9.0-arm64-v8a.apk
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete v1.9.0 --yes >/dev/null 2>&1 || true
+          cat > /tmp/release-notes.md <<'EOF'
+          ## ColorOS AOD Enhance v1.9.0
+
+          ### 核心升级
+          - 完整迁移到 libxposed API 102。
+          - 移除 Legacy Xposed API 82、YukiHookAPI、KavaRef 和 `assets/xposed_init`。
+          - 使用 `XposedModule`、`java_init.list`、`module.prop` 与现代 Chain/Interceptor Hook 模型。
+          - 配置通道迁移到 libxposed Remote Preferences，并保留旧版 `aod_config` 配置迁移。
+
+          ### 保留功能
+          - AOD 暗光/亮光初始亮度自定义或系统默认。
+          - AOD 自动亮度倍率自定义或系统默认。
+          - AOD 最长显示时间：系统默认、30 秒、1/5/10/30/60 分钟、始终显示、自定义 1–1440 分钟。
+          - 单击防误触并保留双击逻辑。
+          - 低光/特殊规则下保持 AOD。
+          - 全景 AOD 与 AOD 设置支持。
+
+          ### 验收
+          - unit test：通过
+          - lintRelease：通过
+          - assembleRelease：通过
+          - APK 签名验证：通过
+          - libxposed API 102 元数据：通过
+          - Legacy `assets/xposed_init` / API 残留检查：通过
+          - ABI：仅 arm64-v8a
+
+          **兼容要求：** 需要支持 libxposed API 102 的 LSPosed/兼容框架。
+
+          **签名提示：** 本项目现有 CI 未保存 v1.8.1 的私钥，因此 v1.9.0 使用新的 Release 证书签名；从 v1.8.1 升级时如 Android 提示签名不一致，需要先备份设置并卸载旧版后安装。
+          EOF
+
+          gh release create v1.9.0 \
+            /tmp/ColorOS_AOD_Enhance-v1.9.0-arm64-v8a.apk \
+            /tmp/SHA256SUMS.txt \
+            /tmp/SIGNATURE_INFO.txt \
+            --title "ColorOS AOD Enhance v1.9.0" \
+            --notes-file /tmp/release-notes.md \
+            --latest
