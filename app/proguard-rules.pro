@@ -1,22 +1,16 @@
-# Xposed 入口类
--keep class com.op.aod.enhance.HookEntryXposed { *; }
+# libxposed API 102 module entry.
+-dontwarn io.github.libxposed.annotation.**
+-adaptresourcefilecontents META-INF/xposed/java_init.list
+-keep,allowoptimization,allowobfuscation public class * extends io.github.libxposed.api.XposedModule {
+    public <init>();
+}
 
-# YukiHookAPI 核心（反射调用需要保留）
--keep class com.highcapable.yukihookapi.** { *; }
-
-# KavaRef 反射工具（方法查找需要保留）
--keep class com.highcapable.kavaref.** { *; }
-
-# Miuix UI 组件库（Compose 需要保留）
+# Miuix UI components used by Compose.
 -keep class top.yukonga.miuix.** { *; }
 
-# 数据类（防止混淆导致 ContentProvider 列名不匹配）
+# Configuration model accessed across manager/hook code.
 -keep class com.op.aod.enhance.data.** { *; }
-
-# Hook 侧配置类（反射和序列化需要）
 -keep class com.op.aod.enhance.hook.AodConfig { *; }
 -keep class com.op.aod.enhance.hook.AodConfigReader { *; }
 
-# 抑制警告
--dontwarn com.highcapable.**
 -dontwarn top.yukonga.miuix.**
