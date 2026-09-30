@@ -4,13 +4,7 @@ import android.app.Application
 import android.app.Instrumentation
 import android.content.Context
 import com.op.aod.enhance.data.AodConfigStore
-import com.op.aod.enhance.hook.AodDurationHook.hookAodDurationLimit
-import com.op.aod.enhance.hook.AodSettingsHook.hookAodAllDaySupportSettings
-import com.op.aod.enhance.hook.BrightnessHook.hookInitBrightnessFix
-import com.op.aod.enhance.hook.BrightnessHook.hookRunningBrightnessBoost
-import com.op.aod.enhance.hook.LowLightHideHook.hookLowLightAodHide
-import com.op.aod.enhance.hook.PanoramicHook.hookPanoramicAllDaySupport
-import com.op.aod.enhance.hook.SingleClickBlockHook.hookSingleClickWakeUpBlock
+import com.op.aod.enhance.hook.AodStateTraceHook.hookAodStateTrace
 import io.github.libxposed.api.XposedModule
 
 object MainHook {
@@ -21,16 +15,9 @@ object MainHook {
         val runtime=HookRuntime(module,classLoader)
         AodConfigReader.bindPrefs(module.getRemotePreferences(AodConfigStore.PREFS_NAME),hostPackage)
         installContextCapture(runtime)
-        when(hostPackage){
-            SYSTEM_UI->{
-                runtime.hookWithLog("Brightness.Init"){hookInitBrightnessFix()}
-                runtime.hookWithLog("Brightness.Running"){hookRunningBrightnessBoost()}
-                runtime.hookWithLog("Duration.Limit"){hookAodDurationLimit()}
-                runtime.hookWithLog("Panoramic.AllDay"){hookPanoramicAllDaySupport()}
-                runtime.hookWithLog("SingleClick.Block"){hookSingleClickWakeUpBlock()}
-                runtime.hookWithLog("LowLight.Block"){hookLowLightAodHide()}
-            }
-            OPLUS_AOD->runtime.hookWithLog("AodSettings.AllDay"){hookAodAllDaySupportSettings()}
+        if(hostPackage==SYSTEM_UI){
+            runtime.hookWithLog("AOD.StateTrace"){hookAodStateTrace()}
+            AodLog.i("AOD_TRACE_MODE","passive=true functionalHooksDisabled=true host=$hostPackage")
         }
     }
 
@@ -62,5 +49,4 @@ object MainHook {
     }
 
     private const val SYSTEM_UI="com.android.systemui"
-    private const val OPLUS_AOD="com.oplus.aod"
 }

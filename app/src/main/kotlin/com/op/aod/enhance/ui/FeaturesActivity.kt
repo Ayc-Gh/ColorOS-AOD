@@ -100,7 +100,7 @@ private fun FeaturesScreen(initial:AodUiConfig,onSave:(AodUiConfig)->Unit){
                     )
 
                     Text(
-                        text="AOD 目标显示时长：${durationModeLabel(durationMode.roundToInt(),durationCustomMinutes.toIntOrNull())}",
+                        text="AOD 追踪参考时长：${durationModeLabel(durationMode.roundToInt(),durationCustomMinutes.toIntOrNull())}",
                         modifier=Modifier.padding(horizontal=16.dp,vertical=8.dp),
                     )
                     Slider(
@@ -134,7 +134,7 @@ private fun FeaturesScreen(initial:AodUiConfig,onSave:(AodUiConfig)->Unit){
                         )
                     }
                     Text(
-                        text="自定义时长会覆盖 ColorOS 的普通 AOD 自动超时；来电、解锁、主动唤醒、节电模式等安全退出仍会立即生效。选择“始终显示”会持续保持 AOD，直到正常唤醒/退出条件发生。",
+                        text="当前为原生状态机追踪版：此选项仅作为日志中的参考配置，不会修改、延长或阻止 ColorOS 的 AOD 行为。请设置为 1 分钟后自然等待系统默认时间熄灭，以便定位真正的 OFF/FINISH 来源。",
                         modifier=Modifier.padding(horizontal=16.dp,vertical=8.dp),
                     )
                 }

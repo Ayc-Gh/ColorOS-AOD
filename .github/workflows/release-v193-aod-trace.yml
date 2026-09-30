@@ -1,0 +1,141 @@
+name: Publish v1.9.3 AOD Trace
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-v193-aod-trace.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --channel=3 "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s "$ANDROID_HOME/platforms/android-37.0" "$ANDROID_HOME/platforms/android-37"
+          fi
+
+      - name: Build and verify trace release
+        run: |
+          grep -q "versionCode = 27" app/build.gradle
+          grep -q "versionName = '1.9.3-aod-trace'" app/build.gradle
+          grep -q "targetApiVersion=102" app/src/main/resources/META-INF/xposed/module.prop
+          test -f app/src/main/kotlin/com/op/aod/enhance/hook/AodStateTraceHook.kt
+          grep -q 'AOD_TRACE_ENTER' app/src/main/kotlin/com/op/aod/enhance/hook/AodStateTraceHook.kt
+          grep -q 'AODDisplayUtil' app/src/main/kotlin/com/op/aod/enhance/hook/AodStateTraceHook.kt
+          grep -q 'DozeMachine' app/src/main/kotlin/com/op/aod/enhance/hook/AodStateTraceHook.kt
+          test ! -f app/src/main/kotlin/com/op/aod/enhance/hook/AodDurationHook.kt
+          test ! -f app/src/main/kotlin/com/op/aod/enhance/hook/AodDurationPolicy.kt
+          test -f tools/capture-aod-trace.sh
+          test ! -f app/src/main/assets/xposed_init
+          ! grep -R -n -E "de\\.robv\\.android\\.xposed|com\\.highcapable\\.yukihookapi|com\\.highcapable\\.kavaref|xposedminversion|xposedmodule" app/src/main app/build.gradle gradle/libs.versions.toml
+
+          mkdir -p /tmp/aod-signing
+          PASS="$(openssl rand -hex 24)"
+          keytool -genkeypair -keystore /tmp/aod-signing/release.jks -storepass "$PASS" -keypass "$PASS" -alias aod_release -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=ColorOS AOD Enhance AOD Trace, O=AOD Enhance, C=US"
+          {
+            echo "storeFile=/tmp/aod-signing/release.jks"
+            echo "storePassword=$PASS"
+            echo "keyAlias=aod_release"
+            echo "keyPassword=$PASS"
+          } > keystore.properties
+
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=1
+          kotlin.daemon.jvmargs=-Xmx1g
+          EOF
+
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 clean testDebugUnitTest lintRelease assembleRelease
+
+          APK=app/build/outputs/apk/release/app-arm64-v8a-release.apk
+          test -f "$APK"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/SIGNATURE_INFO.txt
+          "$BT/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='27'" /tmp/badging.txt
+          grep -q "versionName='1.9.3-aod-trace'" /tmp/badging.txt
+          unzip -p "$APK" META-INF/xposed/module.prop | grep -q "targetApiVersion=102"
+          ENTRY="$(unzip -p "$APK" META-INF/xposed/java_init.list | tr -d '\r\n')"
+          test -n "$ENTRY"
+          ! unzip -l "$APK" | grep -q "assets/xposed_init"
+          ! unzip -l "$APK" | grep -q "lib/armeabi-v7a"
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -q "AOD_TRACE_ENTER" /tmp/dex-strings.txt
+          grep -q "AOD_TRACE_SESSION_END" /tmp/dex-strings.txt
+          ! grep -q "AOD_DURATION_FINISH_BLOCKED" /tmp/dex-strings.txt
+          ! grep -q "de.robv.android.xposed" /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/SHA256SUMS.txt
+          cp "$APK" /tmp/ColorOS_AOD_Enhance-v1.9.3-aod-trace-arm64-v8a.apk
+          cp tools/capture-aod-trace.sh /tmp/capture-aod-trace.sh
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete v1.9.3-aod-trace --yes >/dev/null 2>&1 || true
+          cat > /tmp/release-notes.md <<'EOF'
+          ## ColorOS AOD Enhance v1.9.3 Native AOD Trace
+
+          这是只用于定位 ColorOS 原生 AOD 自动熄灭路径的全链路追踪版。
+
+          ### 不会做什么
+          - 不拦截 DreamService.finish。
+          - 不修改 AODVirtualDozeClient 投票。
+          - 不设置额外 AOD 到期定时器。
+          - 不修改 OFF / DOZE / DOZE_SUSPEND 参数或返回值。
+
+          因此此版本应保持 ColorOS 原始 AOD 行为，日志不会被时长修复逻辑污染。
+
+          ### 追踪范围
+          - DozeService / DreamService
+          - DozeMachine
+          - DozeScreenState
+          - AODDisplayUtil
+          - BaseDisplayUtil
+          - AODVirtualDozeClient
+
+          每个关键调用记录 session、AOD 已运行时间、参数、返回值、关键字段快照以及调用栈。
+
+          ### 建议测试
+          1. 在模块中把参考时长选择为“1 分钟”。
+          2. 运行 Release 附带的 `capture-aod-trace.sh`。
+          3. 熄屏进入 AOD 后完全不要操作。
+          4. 等 ColorOS 按原来的默认时间自行熄灭。
+          5. 熄灭后停止采集，把 `/storage/emulated/0/Documents/ColorOS-AOD/log/aod-trace-*.log` 提供分析。
+
+          重点查找 `AOD_TRACE_ENTER`、`OFF(1)`、`DozeMachine.State.FINISH` 和 `onDreamingStopped` 前 1-3 秒的调用链。
+          EOF
+
+          for attempt in 1 2 3; do
+            if gh release create v1.9.3-aod-trace \
+              /tmp/ColorOS_AOD_Enhance-v1.9.3-aod-trace-arm64-v8a.apk \
+              /tmp/capture-aod-trace.sh \
+              /tmp/SHA256SUMS.txt \
+              /tmp/SIGNATURE_INFO.txt \
+              --title "ColorOS AOD Enhance v1.9.3 Native AOD Trace" \
+              --notes-file /tmp/release-notes.md \
+              --prerelease; then
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          exit 1
