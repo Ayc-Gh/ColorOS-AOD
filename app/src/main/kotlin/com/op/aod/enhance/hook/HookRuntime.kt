@@ -44,5 +44,8 @@ internal class HookRuntime(
     ) = module.hook(method)
         .setId(id)
         .setExceptionMode(XposedInterface.ExceptionMode.DEFAULT)
-        .intercept { chain -> block(chain) }
+        .intercept { chain ->
+            AodLog.d("HOOK_HIT", "id=$id method=${method.declaringClass.name}#${method.name}")
+            block(chain)
+        }
 }
