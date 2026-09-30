@@ -58,7 +58,15 @@ object AodConfigStore {
     private fun copyAll(from:SharedPreferences,to:SharedPreferences){
         val e=to.edit()
         for((k,v) in from.all) when(v){
-            is Boolean->e.putBoolean(k,v);is Int->e.putInt(k,v);is Long->e.putLong(k,v);is Float->e.putFloat(k,v);is String->e.putString(k,v);is Set<*>->@Suppress("UNCHECKED_CAST") e.putStringSet(k,v as Set<String>)
+            is Boolean -> e.putBoolean(k, v)
+            is Int -> e.putInt(k, v)
+            is Long -> e.putLong(k, v)
+            is Float -> e.putFloat(k, v)
+            is String -> e.putString(k, v)
+            is Set<*> -> {
+                @Suppress("UNCHECKED_CAST")
+                e.putStringSet(k, v as Set<String>)
+            }
         }
         e.commit()
     }
