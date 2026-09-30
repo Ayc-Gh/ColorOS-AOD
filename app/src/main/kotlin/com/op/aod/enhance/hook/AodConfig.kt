@@ -1,7 +1,7 @@
 package com.op.aod.enhance.hook
 
 import android.content.Context
-import com.highcapable.yukihookapi.hook.xposed.prefs.YukiHookPrefsBridge
+import android.content.SharedPreferences
 import com.op.aod.enhance.data.AodConfigContract
 import com.op.aod.enhance.data.AodConfigStore
 import com.op.aod.enhance.data.AodValueSanitizer
@@ -26,17 +26,16 @@ internal data class AodConfig(
 
 internal object AodConfigReader {
     private val DEFAULT_CONFIG=AodConfig()
-    private val prefsRef=AtomicReference<YukiHookPrefsBridge?>(null)
+    private val prefsRef=AtomicReference<SharedPreferences?>(null)
     private val cachedRef=AtomicReference<AodConfig?>(null)
     private val refreshing=AtomicBoolean(false)
     private val lastRefreshNs=AtomicLong(0L)
     private val lastFailureNs=AtomicLong(Long.MIN_VALUE)
-    private val identityLogged=AtomicBoolean(false)
 
-    fun bindPrefs(prefs:YukiHookPrefsBridge,hostPackage:String){
-        prefsRef.set(prefs.name(AodConfigStore.PREFS_NAME))
-        cachedRef.set(null);lastRefreshNs.set(0L);lastFailureNs.set(Long.MIN_VALUE);identityLogged.set(false)
-        AodLog.i("CONFIG_BRIDGE","bound host=$hostPackage available=${runCatching{prefsRef.get()?.isPreferencesAvailable}.getOrNull()}")
+    fun bindPrefs(prefs:SharedPreferences,hostPackage:String){
+        prefsRef.set(prefs)
+        cachedRef.set(null);lastRefreshNs.set(0L);lastFailureNs.set(Long.MIN_VALUE)
+        AodLog.i("CONFIG_BRIDGE","bound host=$hostPackage remote=true")
     }
 
     fun read(@Suppress("UNUSED_PARAMETER") context:Context?):AodConfig{
@@ -44,25 +43,20 @@ internal object AodConfigReader {
         val stale=cached==null||now-lastRefreshNs.get()>=CACHE_TTL_NS
         val failed=lastFailureNs.get(); val retryAllowed=failed==Long.MIN_VALUE||now-failed>=FAILURE_BACKOFF_NS
         if(stale&&retryAllowed) refresh(now)
-        val result=cachedRef.get()?:DEFAULT_CONFIG
-        AodLog.d("CONFIG_READ","source=${if(cachedRef.get()!=null)"prefs" else "default"} ${summary(result)}")
-        return result
+        return cachedRef.get()?:DEFAULT_CONFIG
     }
 
     private fun refresh(now:Long){
-        if(!refreshing.compareAndSet(false,true)){AodLog.d("CONFIG_REFRESH","skipped refresh already running");return}
+        if(!refreshing.compareAndSet(false,true)) return
         try{
-            val bridge=prefsRef.get()
-            if(bridge==null){lastFailureNs.set(now);AodLog.w("CONFIG_REFRESH","prefs bridge not bound");return}
-            if(identityLogged.compareAndSet(false,true))AodLog.i("CONFIG_BRIDGE","availability=${runCatching{bridge.isPreferencesAvailable}.getOrNull()} file=${AodConfigStore.PREFS_NAME}")
-            val all=runCatching{bridge.all()}.onFailure{AodLog.e("CONFIG_PREFS_READ","read failed",it)}.getOrNull()
+            val prefs=prefsRef.get() ?: run { lastFailureNs.set(now); return }
+            val all=runCatching{prefs.all}.onFailure{AodLog.e("CONFIG_PREFS_READ","read failed",it)}.getOrNull()
             if(all==null){lastFailureNs.set(now);return}
-            val fresh=fromMap(all);cachedRef.set(fresh);lastRefreshNs.set(now);lastFailureNs.set(Long.MIN_VALUE)
-            AodLog.i("CONFIG_REFRESH","success ${summary(fresh)}")
+            cachedRef.set(fromMap(all));lastRefreshNs.set(now);lastFailureNs.set(Long.MIN_VALUE)
         }finally{refreshing.set(false)}
     }
 
-    private fun fromMap(all:Map<String,Any?>):AodConfig{
+    private fun fromMap(all:Map<String,*>):AodConfig{
         fun int(k:String,d:Int)=(all[k] as? Number)?.toInt()?:d
         fun float(k:String,d:Float)=(all[k] as? Number)?.toFloat()?:d
         fun bool(k:String,d:Boolean)=all[k] as? Boolean?:d
@@ -81,12 +75,6 @@ internal object AodConfigReader {
             aodDurationCustomMinutes=int(AodConfigContract.KEY_AOD_DURATION_CUSTOM_MINUTES,AodConfigContract.DEFAULT_AOD_DURATION_CUSTOM_MINUTES).coerceIn(AodConfigContract.MIN_AOD_DURATION_CUSTOM_MINUTES,AodConfigContract.MAX_AOD_DURATION_CUSTOM_MINUTES),
         )
     }
-
-    private fun summary(c:AodConfig)=
-        "dark=${c.initDark}${if(c.useSystemInitDark)"(system)" else ""} bright=${c.initBright}${if(c.useSystemInitBright)"(system)" else ""} "+
-        "mult=${c.runningMultiplier}${if(c.useSystemRunningMultiplier)"(system)" else ""} panoramic=${c.enablePanoramic} settings=${c.enableSettingsSupport} "+
-        "singleClickBlock=${c.blockSingleClick} lowLightBlock=${c.blockLowLightHide} durationMode=${c.aodDurationMode} durationCustomMin=${c.aodDurationCustomMinutes}"
-
     private const val CACHE_TTL_NS=500_000_000L
     private const val FAILURE_BACKOFF_NS=5_000_000_000L
 }
