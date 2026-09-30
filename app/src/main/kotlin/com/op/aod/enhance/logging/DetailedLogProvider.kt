@@ -7,7 +7,6 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
-import android.os.Environment
 import android.os.Process
 import java.io.File
 
@@ -72,13 +71,8 @@ class DetailedLogProvider : ContentProvider() {
         Bundle().apply { putBoolean(KEY_OK, true) }
     }
 
-    private fun resolveLogDir(ctx: Context): LogDir {
-        if (Environment.isExternalStorageManager()) {
-            val dir = File(Environment.getExternalStorageDirectory(), "Documents/ColorOS-AOD/log")
-            return LogDir(dir, true)
-        }
-        return LogDir(resolveFallbackDir(ctx), false)
-    }
+    private fun resolveLogDir(ctx: Context): LogDir =
+        LogDir(resolveFallbackDir(ctx), false)
 
     private fun resolveFallbackDir(ctx: Context): File =
         ctx.getExternalFilesDir("log") ?: File(ctx.filesDir, "log")
