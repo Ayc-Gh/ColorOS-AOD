@@ -36,8 +36,13 @@ jobs:
           ! grep -R -n -E 'de\.robv\.android\.xposed|com\.highcapable\.yukihookapi|xposedminversion|xposedmodule' app/src/main app/build.gradle gradle/libs.versions.toml
       - name: Build and test
         run: |
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=1
+          kotlin.daemon.jvmargs=-Xmx1g
+          EOF
           chmod +x gradlew
-          ./gradlew --no-daemon clean testDebugUnitTest lintDebug assembleDebug
+          ./gradlew --no-daemon --max-workers=1 clean testDebugUnitTest lintDebug assembleDebug
       - name: Verify APK metadata
         run: |
           APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
