@@ -88,8 +88,8 @@ internal object AodDurationController {
         val clazz = findClass(AOD_DISPLAY_UTIL)
         val method = clazz.getDeclaredMethod(
             "requestScreenState",
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType,
+            Integer.TYPE,
+            Integer.TYPE,
             String::class.java,
         ).apply { isAccessible = true }
 
