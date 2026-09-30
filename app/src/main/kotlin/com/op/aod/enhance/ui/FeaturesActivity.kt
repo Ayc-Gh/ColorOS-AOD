@@ -100,7 +100,7 @@ private fun FeaturesScreen(initial:AodUiConfig,onSave:(AodUiConfig)->Unit){
                     )
 
                     Text(
-                        text="AOD 最长显示时长：${durationModeLabel(durationMode.roundToInt(),durationCustomMinutes.toIntOrNull())}",
+                        text="AOD 目标显示时长：${durationModeLabel(durationMode.roundToInt(),durationCustomMinutes.toIntOrNull())}",
                         modifier=Modifier.padding(horizontal=16.dp,vertical=8.dp),
                     )
                     Slider(
@@ -134,7 +134,7 @@ private fun FeaturesScreen(initial:AodUiConfig,onSave:(AodUiConfig)->Unit){
                         )
                     }
                     Text(
-                        text="这是本次 AOD 的最长显示上限；来电、解锁、系统主动结束等仍会立即退出。选择“始终”只是不设置时长上限，低光保持由上方开关独立控制。",
+                        text="自定义时长会覆盖 ColorOS 的普通 AOD 自动超时；来电、解锁、主动唤醒、节电模式等安全退出仍会立即生效。选择“始终显示”会持续保持 AOD，直到正常唤醒/退出条件发生。",
                         modifier=Modifier.padding(horizontal=16.dp,vertical=8.dp),
                     )
                 }
@@ -152,7 +152,7 @@ private fun durationModeLabel(mode:Int,customMinutes:Int?):String=when(mode){
     AodConfigContract.DURATION_MODE_10_MINUTES->"10 分钟"
     AodConfigContract.DURATION_MODE_30_MINUTES->"30 分钟"
     AodConfigContract.DURATION_MODE_60_MINUTES->"60 分钟"
-    AodConfigContract.DURATION_MODE_ALWAYS->"始终显示（模块不设上限）"
+    AodConfigContract.DURATION_MODE_ALWAYS->"始终显示"
     AodConfigContract.DURATION_MODE_CUSTOM->"自定义 ${customMinutes?:AodConfigContract.DEFAULT_AOD_DURATION_CUSTOM_MINUTES} 分钟"
     else->"使用系统默认"
 }
