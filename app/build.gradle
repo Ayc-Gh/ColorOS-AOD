@@ -2,8 +2,8 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.ksp)
 }
 
 /**
@@ -89,8 +89,8 @@ android {
         applicationId = 'com.op.aod.enhance'
         minSdk = 33
         targetSdk = 36
-        versionCode = 23
-        versionName = '1.8.1'
+        versionCode = 24
+        versionName = '1.9.0'
     }
 
     splits {
@@ -99,6 +99,12 @@ android {
             reset()
             include 'arm64-v8a'
             universalApk = false
+        }
+    }
+
+    packaging {
+        resources {
+            merges += 'META-INF/xposed/*'
         }
     }
 
@@ -129,18 +135,8 @@ dependencies {
     debugImplementation libs.androidx.compose.ui.tooling
     debugImplementation libs.androidx.compose.ui.test.manifest
 
-    implementation(libs.yukihookapi.api) {
-        exclude group: "androidx.appcompat", module: "appcompat"
-        exclude group: "com.google.android.material", module: "material"
-        exclude group: "androidx.preference", module: "preference"
-        exclude group: "androidx.fragment", module: "fragment"
-        exclude group: "androidx.activity", module: "activity"
-    }
-    implementation libs.kavaref.core
-    implementation libs.kavaref.extension
-
-    compileOnly libs.xposed.api
-    ksp libs.yukihookapi.ksp.xposed
+    compileOnly libs.libxposed.api
+    implementation libs.libxposed.service
 
     implementation libs.androidx.core.ktx
     testImplementation 'junit:junit:4.13.2'
