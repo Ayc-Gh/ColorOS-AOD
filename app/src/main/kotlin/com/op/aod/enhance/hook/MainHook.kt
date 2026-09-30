@@ -4,7 +4,7 @@ import android.app.Application
 import android.app.Instrumentation
 import android.content.Context
 import com.op.aod.enhance.data.AodConfigStore
-import com.op.aod.enhance.hook.AodDurationHook.hookAodDurationLimit
+import com.op.aod.enhance.hook.AodStateTraceHook.hookAodStateTrace
 import com.op.aod.enhance.hook.AodSettingsHook.hookAodAllDaySupportSettings
 import com.op.aod.enhance.hook.BrightnessHook.hookInitBrightnessFix
 import com.op.aod.enhance.hook.BrightnessHook.hookRunningBrightnessBoost
@@ -25,7 +25,7 @@ object MainHook {
             SYSTEM_UI->{
                 runtime.hookWithLog("Brightness.Init"){hookInitBrightnessFix()}
                 runtime.hookWithLog("Brightness.Running"){hookRunningBrightnessBoost()}
-                runtime.hookWithLog("Duration.Limit"){hookAodDurationLimit()}
+                runtime.hookWithLog("AOD.StateTrace"){hookAodStateTrace()}
                 runtime.hookWithLog("Panoramic.AllDay"){hookPanoramicAllDaySupport()}
                 runtime.hookWithLog("SingleClick.Block"){hookSingleClickWakeUpBlock()}
                 runtime.hookWithLog("LowLight.Block"){hookLowLightAodHide()}
