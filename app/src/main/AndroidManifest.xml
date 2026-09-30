@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
-
     <application
         android:name=".AodApplication"
         android:allowBackup="true"
@@ -27,17 +25,6 @@
             android:name=".ui.BrightnessActivity"
             android:configChanges="orientation|screenSize|screenLayout"
             android:exported="false" />
-
-        <activity
-            android:name=".ui.LogActivity"
-            android:configChanges="orientation|screenSize|screenLayout"
-            android:exported="false" />
-
-        <provider
-            android:name=".logging.DetailedLogProvider"
-            android:authorities="com.op.aod.enhance.log"
-            android:exported="true"
-            android:grantUriPermissions="false" />
 
         <activity
             android:name=".ui.FeaturesActivity"
