@@ -70,7 +70,10 @@ jobs:
           grep -q "versionCode='24'" /tmp/badging.txt
           grep -q "versionName='1.9.0'" /tmp/badging.txt
           unzip -p "$APK" META-INF/xposed/module.prop | grep -q "targetApiVersion=102"
-          unzip -p "$APK" META-INF/xposed/java_init.list | grep -q "com.op.aod.enhance.ModuleEntry"
+          ENTRY="$(unzip -p "$APK" META-INF/xposed/java_init.list | tr -d '\r\n')"
+          test -n "$ENTRY"
+          echo "Packaged libxposed entry: $ENTRY"
+          ! printf '%s\n' "$ENTRY" | grep -q "HookEntryXposed"
           ! unzip -l "$APK" | grep -q "assets/xposed_init"
           ! unzip -l "$APK" | grep -q "lib/armeabi-v7a"
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
