@@ -52,7 +52,9 @@ internal object AodConfigReader {
             val prefs=prefsRef.get() ?: run { lastFailureNs.set(now); return }
             val all=runCatching{prefs.all}.onFailure{AodLog.e("CONFIG_PREFS_READ","read failed",it)}.getOrNull()
             if(all==null){lastFailureNs.set(now);return}
-            cachedRef.set(fromMap(all));lastRefreshNs.set(now);lastFailureNs.set(Long.MIN_VALUE)
+            val parsed=fromMap(all)
+            cachedRef.set(parsed);lastRefreshNs.set(now);lastFailureNs.set(Long.MIN_VALUE)
+            AodLog.d("CONFIG_REFRESH","keys=${all.size} durationMode=${parsed.aodDurationMode} customMinutes=${parsed.aodDurationCustomMinutes} blockSingle=${parsed.blockSingleClick} blockLowLight=${parsed.blockLowLightHide}")
         }finally{refreshing.set(false)}
     }
 
