@@ -160,8 +160,9 @@ internal object AodStateTraceHook {
         exact: Set<String>,
         prefixes: List<String>,
         source: String,
+        includeInherited: Boolean = false,
     ) {
-        val methods = collectMethods(clazz)
+        val methods = (if (includeInherited) collectMethods(clazz) else runCatching { clazz.declaredMethods.toList() }.getOrDefault(emptyList()))
             .filter { method -> method.name in exact || prefixes.any { prefix -> method.name.startsWith(prefix) } }
             .distinctBy(::methodKey)
         if (methods.isEmpty()) {
@@ -186,7 +187,7 @@ internal object AodStateTraceHook {
     }
 
     private fun HookRuntime.hookAllNamed(clazz: Class<*>, names: Set<String>, source: String) {
-        hookMatching(clazz, names, emptyList(), source)
+        hookMatching(clazz, names, emptyList(), source, includeInherited = true)
     }
 
     private fun HookRuntime.hookNamed(
