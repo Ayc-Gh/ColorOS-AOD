@@ -71,8 +71,10 @@ internal object AodDurationHook {
         runCatching {
             val method = findMethod(dozeClass, "onWakeUp")
             intercept("aod.duration.wakeup", method) { chain ->
-                explicitWakeUntilMs = SystemClock.elapsedRealtime() + WAKE_GRACE_MS
-                AodLog.i("AOD_DURATION_WAKE", "allow native wake for ${WAKE_GRACE_MS}ms")
+                if (chain.getThisObject() === activeDozeService) {
+                    explicitWakeUntilMs = SystemClock.elapsedRealtime() + WAKE_GRACE_MS
+                    AodLog.i("AOD_DURATION_WAKE", "allow native wake for ${WAKE_GRACE_MS}ms")
+                }
                 chain.proceed()
             }
         }.onFailure {
@@ -86,7 +88,7 @@ internal object AodDurationHook {
             finishMethod = method
             intercept("aod.duration.finish", method) { chain ->
                 val service = chain.getThisObject()
-                if (service != null && shouldBlockFinish()) {
+                if (service != null && service === activeDozeService && shouldBlockFinish()) {
                     val now = SystemClock.elapsedRealtime()
                     val remaining = remainingMs(now)
                     AodLog.w(
@@ -110,7 +112,8 @@ internal object AodDurationHook {
             val clientClass = findClass(AOD_VIRTUAL_CLIENT)
             val method = findMethod(clientClass, "getVoteState")
             intercept("aod.duration.native-vote", method) { chain ->
-                val original = chain.proceed() as? Int ?: return@intercept chain.proceed()
+                val proceeded = chain.proceed()
+                val original = proceeded as? Int ?: return@intercept proceeded
                 val client = chain.getThisObject() ?: return@intercept original
                 val requestState = readIntField(client, "mRequestState") ?: return@intercept original
                 val reason = readField(client, "mReason")?.toString()
