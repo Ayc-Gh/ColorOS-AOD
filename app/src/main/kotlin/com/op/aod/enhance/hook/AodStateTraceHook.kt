@@ -14,6 +14,10 @@ internal object AodStateTraceHook {
     private const val AOD_DISPLAY_UTIL = "com.oplus.systemui.aod.display.AODDisplayUtil"
     private const val BASE_DISPLAY_UTIL = "com.oplus.systemui.aod.display.BaseDisplayUtil"
     private const val AOD_VIRTUAL_CLIENT = "com.oplus.systemui.aod.display.AODDisplayUtil\$AODVirtualDozeClient"
+    private const val OPLUS_DOZE_SERVICE = "com.oplus.systemui.aod.OplusDozeServiceExImpl"
+    private const val AOD_UPDATE_MANAGER = "com.oplus.systemui.aod.aodclock.off.AodUpdateManager"
+    private const val AOD_SENSOR_CALLBACK = "com.oplus.systemui.aod.aodclock.off.AodUpdateManager\$2"
+    private const val SMOOTH_TRANSITION_CONTROLLER = "com.oplus.systemui.aod.display.SmoothTransitionController"
 
     private val sessionSeq = AtomicLong(0L)
     @Volatile private var sessionStartMs = 0L
@@ -27,6 +31,9 @@ internal object AodStateTraceHook {
         installVirtualClientTrace()
         installDozeMachineTrace()
         installDozeScreenStateTrace()
+        installOplusDozeServiceTrace()
+        installAodUpdateManagerTrace()
+        installSmoothTransitionTrace()
     }
 
     private fun HookRuntime.installDozeLifecycleTrace() {
@@ -142,6 +149,51 @@ internal object AodStateTraceHook {
         )
     }
 
+    private fun HookRuntime.installOplusDozeServiceTrace() {
+        val clazz = runCatching { findClass(OPLUS_DOZE_SERVICE) }.getOrElse {
+            AodLog.w("AOD_TRACE_REGISTER", "OplusDozeServiceExImpl unavailable", it)
+            return
+        }
+        hookMatching(
+            clazz,
+            exact = setOf("setDozeScreenState", "onDreamingStarted", "onDreamingStopped", "finish"),
+            prefixes = listOf("requestScreenState", "setScreenState", "setDoze", "stopDoze", "finish"),
+            source = "OplusDozeServiceExImpl",
+        )
+    }
+
+    private fun HookRuntime.installAodUpdateManagerTrace() {
+        runCatching { findClass(AOD_UPDATE_MANAGER) }.onSuccess { clazz ->
+            hookMatching(
+                clazz,
+                exact = setOf("needDisplayAodInSpecialRule", "setIsHideBySpecialRule"),
+                prefixes = listOf("hideAod", "updateAod", "setIsHide", "needDisplay"),
+                source = "AodUpdateManager",
+            )
+        }.onFailure { AodLog.w("AOD_TRACE_REGISTER", "AodUpdateManager unavailable", it) }
+
+        runCatching { findClass(AOD_SENSOR_CALLBACK) }.onSuccess { clazz ->
+            hookMatching(
+                clazz,
+                exact = setOf("hideAodByDarkLight"),
+                prefixes = emptyList(),
+                source = "AodUpdateManagerSensor",
+            )
+        }.onFailure { AodLog.w("AOD_TRACE_REGISTER", "AodUpdateManager sensor callback unavailable", it) }
+    }
+
+    private fun HookRuntime.installSmoothTransitionTrace() {
+        val clazz = runCatching { findClass(SMOOTH_TRANSITION_CONTROLLER) }.getOrElse {
+            AodLog.w("AOD_TRACE_REGISTER", "SmoothTransitionController unavailable", it)
+            return
+        }
+        hookMatching(
+            clazz,
+            exact = setOf("updateCurrentUiState"),
+            prefixes = emptyList(),
+            source = "SmoothTransitionController",
+        )
+    }
     private fun HookRuntime.installDozeScreenStateTrace() {
         val clazz = runCatching { findClass(DOZE_SCREEN_STATE) }.getOrElse {
             AodLog.w("AOD_TRACE_REGISTER", "DozeScreenState unavailable", it)
@@ -357,5 +409,10 @@ internal object AodStateTraceHook {
         "mPendingScreenState",
         "mState",
         "mWakefulness",
+        "currentUiState",
+        "gotoDozeWithOff",
+        "isSupportSmoothTransition",
+        "mIsHideBySpecialRule",
+        "mAodIsInShow",
     )
 }
