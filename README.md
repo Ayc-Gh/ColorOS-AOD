@@ -88,6 +88,22 @@ su -c 'mkdir -p /storage/emulated/0/Documents/ColorOS-AOD/log; logcat -v threadt
 
 详细日志版用于问题定位，日志量明显高于普通版。
 
+## v1.10.0 RC1 · AOD 时长控制重构
+
+基于 PHY110 / ColorOS 16.0.10.500(CN01) 的原生状态机追踪结果，确认全景 AOD 的普通自动超时由以下链路触发：
+
+`PanoramicAodController -> AODDisplayUtil.requestScreenState(OFF, 100, "Panoramic-Aod-Show")`。
+
+v1.10.0 RC1 不再通过额外 `Handler` 或 `DreamService.finish()` 控制时长，而是只接管上述原生普通超时：
+
+- “系统默认”：完全放行 ColorOS 原逻辑。
+- “30 秒 / 1 分钟 / 5 分钟 / 10 分钟 / 30 分钟 / 60 分钟 / 自定义”：在原生普通超时到来时暂缓 OFF，到目标时间后回放同一个 ColorOS 原生 OFF 请求。
+- “始终显示”：只屏蔽 `Panoramic-Aod-Show` 这一条普通自动超时。
+- 指纹、解锁、主动唤醒、来电以及其他 reason 的 OFF 请求完全不拦截。
+- 到期调度使用 `ELAPSED_REALTIME_WAKEUP`，避免旧 Handler 方案在休眠中延迟。
+
+关键诊断日志：`AOD_SESSION_START`、`AOD_NATIVE_TIMEOUT_INTERCEPT`、`AOD_DEADLINE_SCHEDULE`、`AOD_DEADLINE_REACHED`、`AOD_NATIVE_OFF_REPLAY`、`AOD_SESSION_END`。
+
 ## 安装
 
 1. 安装构建出的 APK。
