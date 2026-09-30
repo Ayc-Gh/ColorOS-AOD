@@ -162,7 +162,7 @@ internal object AodStateTraceHook {
         source: String,
     ) {
         val methods = collectMethods(clazz)
-            .filter { it.name in exact || prefixes.any(it.name::startsWith) }
+            .filter { method -> method.name in exact || prefixes.any { prefix -> method.name.startsWith(prefix) } }
             .distinctBy(::methodKey)
         if (methods.isEmpty()) {
             AodLog.w("AOD_TRACE_REGISTER", "$source matched no methods")
@@ -215,8 +215,9 @@ internal object AodStateTraceHook {
         val out = ArrayList<Method>()
         var current: Class<*>? = clazz
         while (current != null && current != Any::class.java) {
-            runCatching { current.declaredMethods.toList() }.getOrNull()?.let(out::addAll)
-            current = current.superclass
+            val type = current
+            runCatching { type.declaredMethods.toList() }.getOrNull()?.let(out::addAll)
+            current = type.superclass
         }
         out.forEach { runCatching { it.isAccessible = true } }
         return out
@@ -230,7 +231,7 @@ internal object AodStateTraceHook {
         withStack: Boolean,
     ) {
         val args = (0 until method.parameterCount).joinToString(", ") { index ->
-            "a$index=${safeValue(runCatching { chain.getArg(index) }.getOrNull())}"
+            "a$index=${formatArgument(method, index, runCatching { chain.getArg(index) }.getOrNull())}"
         }
         val target = chain.getThisObject()
         val snapshot = snapshot(target)
@@ -246,7 +247,7 @@ internal object AodStateTraceHook {
         val stack = if (withStack) " stack=${callerStack()}" else ""
         AodLog.i(
             "AOD_TRACE_EXIT",
-            "session=$sessionId elapsedMs=${elapsedMs()} source=$source method=${signature(method)} result=${safeValue(result)} snapshot={$snapshot}$stack",
+            "session=$sessionId elapsedMs=${elapsedMs()} source=$source method=${signature(method)} result=${formatResult(source, method, result)} snapshot={$snapshot}$stack",
         )
     }
 
@@ -255,7 +256,7 @@ internal object AodStateTraceHook {
         val values = LinkedHashMap<String, String>()
         for (name in SNAPSHOT_FIELDS) {
             val value = readField(target, name) ?: continue
-            values[name] = safeValue(value)
+            values[name] = if (name in DISPLAY_STATE_FIELDS && value is Number) displayState(value.toInt()) else safeValue(value)
         }
         runCatching {
             val method = target.javaClass.methods.firstOrNull { it.name == "isDreaming" && it.parameterCount == 0 }
@@ -269,20 +270,35 @@ internal object AodStateTraceHook {
     private fun readField(instance: Any, name: String): Any? {
         var type: Class<*>? = instance.javaClass
         while (type != null) {
-            val field: Field? = runCatching { type.getDeclaredField(name) }.getOrNull()
+            val current = type
+            val field: Field? = runCatching { current.getDeclaredField(name) }.getOrNull()
             if (field != null) {
                 runCatching { field.isAccessible = true }
                 return runCatching { field.get(instance) }.getOrNull()
             }
-            type = type.superclass
+            type = current.superclass
         }
         return null
     }
 
+
+    private fun formatArgument(method: Method, index: Int, value: Any?): String {
+        val stateLike = value is Number && (
+            method.name.contains("ScreenState", ignoreCase = true) ||
+                method.name == "setDozeScreenState" ||
+                method.name == "onScreenStateChanged"
+        )
+        return if (stateLike) displayState((value as Number).toInt()) else safeValue(value)
+    }
+
+    private fun formatResult(source: String, method: Method, value: Any?): String {
+        val stateLike = value is Number && source == "AODVirtualDozeClient" && method.name == "getVoteState"
+        return if (stateLike) displayState((value as Number).toInt()) else safeValue(value)
+    }
+
     private fun safeValue(value: Any?): String = when (value) {
         null -> "null"
-        is Int -> displayState(value)
-        is Long, is Float, is Double, is Boolean, is Short, is Byte -> value.toString()
+        is Int, is Long, is Float, is Double, is Boolean, is Short, is Byte -> value.toString()
         is CharSequence -> '"' + value.toString().take(160).replace("\n", " ") + '"'
         is Enum<*> -> "${value.javaClass.simpleName}.${value.name}"
         else -> "${value.javaClass.simpleName}@${Integer.toHexString(System.identityHashCode(value))}"
@@ -326,6 +342,8 @@ internal object AodStateTraceHook {
 
     private fun methodKey(method: Method): String =
         "${method.declaringClass.name}#${signature(method)}"
+
+    private val DISPLAY_STATE_FIELDS = setOf("mRequestState", "mRequestedDisplayState", "mDeviceDisplayState", "mPendingScreenState")
 
     private val SNAPSHOT_FIELDS = arrayOf(
         "mReason",
