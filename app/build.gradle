@@ -88,8 +88,8 @@ android {
         applicationId = 'com.op.aod.enhance'
         minSdk = 33
         targetSdk = 36
-        versionCode = 27
-        versionName = '1.9.3-aod-trace'
+        versionCode = 28
+        versionName = '1.10.0-rc1'
     }
 
     splits {
