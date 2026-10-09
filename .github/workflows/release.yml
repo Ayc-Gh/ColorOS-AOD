@@ -59,6 +59,11 @@ jobs:
           PY
       - name: Test and build optimized release
         run: |
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=1
+          kotlin.daemon.jvmargs=-Xmx1g
+          EOF
           chmod +x gradlew
           ./gradlew --no-daemon --max-workers=1 testDebugUnitTest lintRelease assembleRelease
       - name: Verify release metadata and signing
