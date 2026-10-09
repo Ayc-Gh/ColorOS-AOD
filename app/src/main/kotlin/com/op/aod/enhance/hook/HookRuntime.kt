@@ -3,6 +3,7 @@ package com.op.aod.enhance.hook
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import java.lang.reflect.Method
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal class HookRuntime(
     val module: XposedModule,
@@ -24,7 +25,10 @@ internal class HookRuntime(
         var current: Class<*>? = clazz
         while (current != null) {
             val method = if (parameterTypes.isEmpty()) {
-                current.declaredMethods.firstOrNull { it.name == methodName }
+                current.declaredMethods.filter { it.name == methodName }.let { candidates ->
+                    check(candidates.size <= 1) { "Ambiguous method: ${clazz.name}#$methodName; specify parameter types" }
+                    candidates.singleOrNull()
+                }
             } else {
                 runCatching { current.getDeclaredMethod(methodName, *parameterTypes) }.getOrNull()
             }
@@ -41,11 +45,14 @@ internal class HookRuntime(
         id: String,
         method: Method,
         block: (XposedInterface.Chain) -> Any?,
-    ) = module.hook(method)
+    ): XposedInterface.HookHandle {
+        val firstHit = AtomicBoolean(true)
+        return module.hook(method)
         .setId(id)
         .setExceptionMode(XposedInterface.ExceptionMode.DEFAULT)
         .intercept { chain ->
-            AodLog.d("HOOK_HIT", "id=$id method=${method.declaringClass.name}#${method.name}")
+            if (firstHit.getAndSet(false)) AodLog.i("HOOK_HIT", "id=$id method=${method.declaringClass.name}#${method.name}")
             block(chain)
         }
+    }
 }

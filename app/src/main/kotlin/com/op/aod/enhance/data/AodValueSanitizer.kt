@@ -1,12 +1,6 @@
 package com.op.aod.enhance.data
 
-/**
- * Configuration boundary sanitizer shared by UI, Provider and Hook sides.
- *
- * Keep the validation at every trust boundary: UI input is untrusted, an exported
- * ContentProvider can receive malformed values, and the Hook side must never crash
- * SystemUI even if persisted data was written by an older/broken build.
- */
+/** Validates persisted settings shared by the manager and SystemUI hooks. */
 internal object AodValueSanitizer {
 
     const val MIN_BRIGHTNESS = 0

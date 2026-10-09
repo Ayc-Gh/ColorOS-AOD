@@ -6,6 +6,20 @@ internal object PanoramicHook {
 
     fun HookRuntime.hookPanoramicAllDaySupport(){
         val clazz=runCatching{findClass(SMOOTH_TRANSITION_CONTROLLER)}.getOrElse{AodLog.e("HOOK_REGISTER_DETAIL","Panoramic controller resolve failed",it);return}
+        // ColorOS publishes the capability to Settings during init, before our
+        // after-hook changes the fields. Intercept that publication as well.
+        runCatching {
+            val publish = findMethod(clazz, "setPanoramicSupportAllDayForApplication", Boolean::class.javaPrimitiveType!!)
+            intercept("aod.panoramic.publish-all-day", publish) { chain ->
+                if (!AodConfigReader.read(MainHook.hostAppContext).enablePanoramic) {
+                    return@intercept chain.proceed()
+                }
+                val args = chain.getArgs().toTypedArray()
+                args[0] = true
+                AodLog.i("PANORAMIC_PUBLISH", "allDay=true original=${chain.getArg(0)}")
+                chain.proceed(args)
+            }
+        }.onFailure { AodLog.e("HOOK_REGISTER_DETAIL", "Panoramic capability publication unavailable", it) }
         fun apply(instance:Any){
             if(!AodConfigReader.read(MainHook.hostAppContext).enablePanoramic)return
             var changed=0

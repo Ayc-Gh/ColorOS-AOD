@@ -2,7 +2,7 @@ name: Modern libxposed API CI
 
 on:
   push:
-    branches: [modern-libxposed-api-102]
+    branches: [main, modern-libxposed-api-102]
   pull_request:
     branches: [main]
 
@@ -42,7 +42,7 @@ jobs:
           kotlin.daemon.jvmargs=-Xmx1g
           EOF
           chmod +x gradlew
-          ./gradlew --no-daemon --max-workers=1 clean testDebugUnitTest lintDebug assembleDebug
+          ./gradlew --no-daemon --max-workers=1 clean testDebugUnitTest lintRelease assembleDebug assembleRelease
       - name: Verify APK metadata
         run: |
           APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)

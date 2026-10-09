@@ -1,13 +1,20 @@
 package com.op.aod.enhance.hook
 
 import android.util.Log
+import com.op.aod.enhance.BuildConfig
+import io.github.libxposed.api.XposedModule
 
-/** Detailed-log build: keep all runtime levels enabled in release builds. */
+/** Release keeps lifecycle/error events; detailed traces are debug-build only. */
 internal object AodLog {
     private const val TAG = "AOD_Enhance"
     private const val MAX_MESSAGE_CHARS = 6000
+    @Volatile private var module: XposedModule? = null
 
-    fun d(event: String, message: String) = write(Log.DEBUG, event, message, null)
+    fun bind(module: XposedModule) { this.module = module }
+
+    fun d(event: String, message: String) {
+        if (BuildConfig.DEBUG) write(Log.DEBUG, event, message, null)
+    }
     fun i(event: String, message: String) = write(Log.INFO, event, message, null)
     fun w(event: String, message: String, error: Throwable? = null) = write(Log.WARN, event, message, error)
     fun e(event: String, message: String, error: Throwable? = null) = write(Log.ERROR, event, message, error)
@@ -23,5 +30,8 @@ internal object AodLog {
             }
         }
         Log.println(priority, TAG, "$event: $out")
+        // ColorOS can evict logcat entries within seconds. Keep diagnostics in
+        // the framework's module log too, without logging every hook invocation.
+        if (priority >= Log.INFO) runCatching { module?.log(priority, TAG, "$event: $out") }
     }
 }

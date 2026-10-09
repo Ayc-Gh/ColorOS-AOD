@@ -1,7 +1,7 @@
 package com.op.aod.enhance.data
 
-/** UI 侧配置镜像。 */
-data class AodUiConfig(
+/** Shared immutable configuration for the manager and host hooks. */
+data class AodConfig(
     val initDark: Int = AodConfigContract.DEFAULT_INIT_DARK,
     val initBright: Int = AodConfigContract.DEFAULT_INIT_BRIGHT,
     val runningMultiplier: Float = AodConfigContract.DEFAULT_RUNNING_MULTIPLIER,

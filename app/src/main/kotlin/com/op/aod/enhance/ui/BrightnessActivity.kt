@@ -26,7 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.op.aod.enhance.data.AodConfigContract
 import com.op.aod.enhance.data.AodConfigStore
-import com.op.aod.enhance.data.AodUiConfig
+import com.op.aod.enhance.data.AodConfig
 import com.op.aod.enhance.data.AodValueSanitizer
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -58,8 +58,8 @@ class BrightnessActivity : ComponentActivity() {
 @OptIn(FlowPreview::class)
 @Composable
 private fun BrightnessScreen(
-    initial: AodUiConfig,
-    onSave: (AodUiConfig) -> Unit
+    initial: AodConfig,
+    onSave: (AodConfig) -> Unit
 ) {
     var initDark by remember { mutableFloatStateOf(initial.initDark.toFloat()) }
     var initBright by remember { mutableFloatStateOf(initial.initBright.toFloat()) }
@@ -88,7 +88,7 @@ private fun BrightnessScreen(
         )
     }
 
-    fun persistFlag(transform: (AodUiConfig) -> AodUiConfig) {
+    fun persistFlag(transform: (AodConfig) -> AodConfig) {
         currentOnSave(transform(AodConfigStore.read(context)))
     }
 

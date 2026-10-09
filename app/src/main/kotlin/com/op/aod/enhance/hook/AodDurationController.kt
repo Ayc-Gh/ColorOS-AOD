@@ -1,45 +1,104 @@
 package com.op.aod.enhance.hook
 
 import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.op.aod.enhance.data.AodConfigContract
 import java.lang.reflect.Method
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Controls only the ColorOS panoramic AOD native timeout.
+ * Controls the ColorOS panoramic AOD energy-saving UI hide and native timeout.
  *
  * The native timeout is identified from device traces as:
  * AODDisplayUtil.requestScreenState(OFF, 100, "Panoramic-Aod-Show").
- * All other screen-state requests are passed through unchanged.
+ * Other screen-state requests and proximity, schedule or user-disable hides
+ * are passed through unchanged.
  */
 internal object AodDurationController {
     private const val DOZE_SERVICE = "com.android.systemui.doze.DozeService"
     private const val AOD_DISPLAY_UTIL = "com.oplus.systemui.aod.display.AODDisplayUtil"
-    private const val ALARM_TAG = "ColorOS-AOD-NativeTimeout"
+    private const val PANORAMIC_CONTROLLER = "com.oplus.systemui.aod.controller.PanoramicAodController"
+    // ColorOS preserves exact timing for its native AOD alarm action. A private
+    // data URI keeps this operation distinct: native action-only receiver
+    // filters do not match intents carrying our custom data scheme.
+    private const val alarmAction = "com.android.systemui.aod.HIDE_TIME"
+    private const val alarmScheme = "coloros-aod-duration"
+    private val alarmToken = UUID.randomUUID().toString()
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val sessionSeq = AtomicLong(0L)
-    private val active = AtomicBoolean(false)
     private val replayGuard = ThreadLocal.withInitial { false }
     private val stateLock = Any()
 
-    @Volatile private var sessionId = 0L
-    @Volatile private var sessionStartedAtMs = 0L
-    @Volatile private var sessionMode = AodConfigContract.DURATION_MODE_SYSTEM
-    @Volatile private var sessionCustomMinutes = AodConfigContract.DEFAULT_AOD_DURATION_CUSTOM_MINUTES
-    @Volatile private var sessionTargetMs: Long? = null
-    @Volatile private var pendingNativeOff: NativeOffRequest? = null
+    private class Session(val timing: AodDurationSession) {
+        var pendingOff: NativeOffRequest? = null
+        var pendingHide: NativeHideRequest? = null
+    }
+    @Volatile private var session: Session? = null
+    private val sessionId get() = session?.timing?.id ?: 0L
+    private val sessionMode get() = session?.timing?.mode ?: AodConfigContract.DURATION_MODE_SYSTEM
+    private val sessionTargetMs get() = session?.timing?.targetMs
+    private val active get() = session?.timing?.visible == true
+    private var pendingNativeOff: NativeOffRequest?
+        get() = session?.pendingOff
+        set(value) { session?.pendingOff = value }
+    private var pendingNativeHide: NativeHideRequest?
+        get() = session?.pendingHide
+        set(value) { session?.pendingHide = value }
     @Volatile private var alarmManager: AlarmManager? = null
-    @Volatile private var alarmListener: AlarmManager.OnAlarmListener? = null
+    @Volatile private var alarmIntent: PendingIntent? = null
+    @Volatile private var alarmReceiver: BroadcastReceiver? = null
+    @Volatile private var alarmContext: Context? = null
     @Volatile private var fallbackRunnable: Runnable? = null
 
     fun HookRuntime.hookAodDurationControl() {
         installLifecycleHooks()
+        installEnergySavingHideInterceptor()
         installNativeTimeoutInterceptor()
+    }
+
+    private fun HookRuntime.installEnergySavingHideInterceptor() {
+        runCatching {
+            val method = findMethod(PANORAMIC_CONTROLLER, "onEnergySavingNotifyHide")
+            val hideMethod = findClass(PANORAMIC_CONTROLLER).getDeclaredMethod("hideClock", Integer.TYPE).apply { isAccessible = true }
+            intercept("aod.duration.panoramic-energy-hide", method) { chain ->
+                if (replayGuard.get() == true || !AodDurationPolicy.shouldDeferEnergySavingHide(
+                        active, sessionMode, elapsedMs(), sessionTargetMs,
+                    )) {
+                    endSession("native UI hide allowed", hidden = true)
+                    return@intercept chain.proceed()
+                }
+                val receiver = chain.getThisObject() ?: return@intercept chain.proceed()
+                synchronized(stateLock) { pendingNativeHide = NativeHideRequest(receiver, hideMethod) }
+                AodLog.i("AOD_UI_HIDE_DEFER", "session=$sessionId elapsedMs=${elapsedMs()} targetMs=$sessionTargetMs mode=${modeName(sessionMode)}")
+                null
+            }
+            // The minute update can independently hide with reason 12 after
+            // isDisplayModeAllowUpdateClock rejects the native energy-saving
+            // quota. Other reasons (proximity, schedule, user switch) pass.
+            intercept("aod.duration.panoramic-clock-hide", hideMethod) { chain ->
+                val reason = chain.getArg(0) as? Int
+                if (replayGuard.get() == true || !AodDurationPolicy.shouldDeferClockHide(
+                        reason, active, sessionMode, elapsedMs(), sessionTargetMs,
+                    )) {
+                    endSession("native UI hide allowed", hidden = true)
+                    return@intercept chain.proceed()
+                }
+                val receiver = chain.getThisObject() ?: return@intercept chain.proceed()
+                synchronized(stateLock) { pendingNativeHide = NativeHideRequest(receiver, hideMethod) }
+                AodLog.i("AOD_UI_HIDE_DEFER", "session=$sessionId reason=$reason elapsedMs=${elapsedMs()} targetMs=$sessionTargetMs")
+                null
+            }
+        }.onFailure { AodLog.e("DURATION_HOOK", "Panoramic energy-saving hide unavailable", it) }
     }
 
     private fun HookRuntime.installLifecycleHooks() {
@@ -71,12 +130,13 @@ internal object AodDurationController {
         }
 
         runCatching {
-            val method = clazz.getDeclaredMethod("onWakeUp").apply { isAccessible = true }
+            val method = findMethod(clazz, "onWakeUp")
             intercept("aod.duration.wakeup", method) { chain ->
                 AodLog.i(
                     "AOD_SESSION_WAKE",
                     "session=$sessionId elapsedMs=${elapsedMs()} action=pass-through",
                 )
+                endSession("DreamService.onWakeUp")
                 chain.proceed()
             }
         }.onFailure {
@@ -94,25 +154,42 @@ internal object AodDurationController {
         ).apply { isAccessible = true }
 
         intercept("aod.duration.native-panoramic-timeout", method) { chain ->
-            if (replayGuard.get()) {
+            if (replayGuard.get() == true) {
                 return@intercept chain.proceed()
             }
 
             val state = chain.getArg(0) as? Int ?: return@intercept chain.proceed()
             val delayMs = chain.getArg(1) as? Int ?: return@intercept chain.proceed()
             val reason = chain.getArg(2) as? String
+            if (reason == AodDurationPolicy.NATIVE_TIMEOUT_REASON) {
+                AodLog.d("AOD_NATIVE_REQUEST", "session=$sessionId active=${active} state=$state delayMs=$delayMs reason=$reason elapsedMs=${elapsedMs()}")
+            }
 
-            if (!active.get()) {
+            if (!active) {
                 return@intercept chain.proceed()
             }
 
             val elapsed = elapsedMs()
             val mode = sessionMode
             val target = sessionTargetMs
+            // All-day ColorOS may never emit the ordinary OFF timeout. The
+            // native panoramic SHOW request gives us a receiver and a safe
+            // matching OFF template, so finite modes always get a deadline.
+            if (AodDurationPolicy.shouldArmDeadline(state, reason, target) && target != null) {
+                chain.getThisObject()?.let { receiver ->
+                    synchronized(stateLock) {
+                        if (pendingNativeOff == null) pendingNativeOff = NativeOffRequest(
+                            receiver, method, android.view.Display.STATE_OFF, 100, AodDurationPolicy.NATIVE_TIMEOUT_REASON,
+                        )
+                    }
+                    scheduleReplayIfNeeded((target - elapsed).coerceAtLeast(0L))
+                }
+            }
             val shouldIntercept = AodDurationPolicy.shouldInterceptNativeTimeout(
                 state = state,
                 reason = reason,
                 mode = mode,
+                visible = active,
                 elapsedMs = elapsed,
                 targetMs = target,
             )
@@ -164,68 +241,66 @@ internal object AodDurationController {
     }
 
     private fun beginSession() {
-        cancelReplayAlarm()
         val cfg = AodConfigReader.read(MainHook.hostAppContext)
-        val id = sessionSeq.incrementAndGet()
-        val now = SystemClock.elapsedRealtime()
-
         synchronized(stateLock) {
-            sessionId = id
-            sessionStartedAtMs = now
-            sessionMode = cfg.aodDurationMode
-            sessionCustomMinutes = cfg.aodDurationCustomMinutes
-            sessionTargetMs = AodDurationPolicy.targetDurationMs(
-                cfg.aodDurationMode,
-                cfg.aodDurationCustomMinutes,
-            )
-            pendingNativeOff = null
-            active.set(true)
+            cancelReplayAlarm()
+            session?.timing?.end()
+            session = Session(AodDurationSession(
+                sessionSeq.incrementAndGet(), SystemClock.elapsedRealtime(),
+                cfg.aodDurationMode, cfg.aodDurationCustomMinutes,
+            ))
         }
-
-        AodLog.i(
-            "AOD_SESSION_START",
-            "session=$id mode=${modeName(sessionMode)} targetMs=$sessionTargetMs customMinutes=$sessionCustomMinutes",
-        )
+        AodLog.i("AOD_SESSION_START", "session=$sessionId mode=${modeName(sessionMode)} targetMs=$sessionTargetMs")
     }
 
-    private fun endSession(reason: String) {
-        val wasActive = active.getAndSet(false)
-        val elapsed = elapsedMs()
+    private fun endSession(reason: String, hidden: Boolean = false) = synchronized(stateLock) {
+        val current = session ?: return@synchronized
+        val wasActive = current.timing.visible
+        if (hidden) current.timing.allowHide() else current.timing.end()
         cancelReplayAlarm()
-        synchronized(stateLock) {
-            pendingNativeOff = null
-        }
-        if (wasActive) {
-            AodLog.i(
-                "AOD_SESSION_END",
-                "session=$sessionId mode=${modeName(sessionMode)} elapsedMs=$elapsed reason=$reason",
-            )
-        }
+        current.pendingOff = null
+        current.pendingHide = null
+        if (wasActive) AodLog.i("AOD_SESSION_END", "session=${current.timing.id} elapsedMs=${elapsedMs()} reason=$reason")
     }
 
-    private fun scheduleReplayIfNeeded(remainingMs: Long) {
-        if (!active.get()) return
+    private fun scheduleReplayIfNeeded(remainingMs: Long): Unit = synchronized(stateLock) {
+        if (!active) return
         if (sessionMode == AodConfigContract.DURATION_MODE_ALWAYS) return
-        if (alarmListener != null || fallbackRunnable != null) return
+        if (alarmIntent != null || fallbackRunnable != null) return
 
         val expectedSession = sessionId
         val triggerAt = SystemClock.elapsedRealtime() + remainingMs
         val context = MainHook.hostAppContext
         val alarm = runCatching { context?.getSystemService(AlarmManager::class.java) }.getOrNull()
 
-        if (alarm != null) {
-            val listener = AlarmManager.OnAlarmListener {
-                replayNativeOff(expectedSession, "alarm")
+        if (alarm != null && context != null) {
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    if (intent.action == alarmAction && intent.data?.host == alarmToken &&
+                        intent.data?.lastPathSegment == expectedSession.toString()) {
+                        replayNativeOff(expectedSession, "idle-allowed-alarm")
+                    }
+                }
             }
             alarmManager = alarm
-            alarmListener = listener
+            alarmContext = context
+            alarmReceiver = receiver
             val scheduled = runCatching {
-                alarm.setExact(
+                val filter = IntentFilter(alarmAction).apply {
+                    addDataScheme(alarmScheme)
+                    addDataAuthority(alarmToken, null)
+                }
+                context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                val operation = PendingIntent.getBroadcast(
+                    context, expectedSession.toInt(), Intent(alarmAction).setPackage(context.packageName)
+                        .setData(Uri.parse("$alarmScheme://$alarmToken/$expectedSession")),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+                alarmIntent = operation
+                alarm.setExactAndAllowWhileIdle(
                     AlarmManager.ELAPSED_REALTIME_WAKEUP,
                     triggerAt,
-                    ALARM_TAG,
-                    listener,
-                    mainHandler,
+                    operation,
                 )
             }.onFailure {
                 AodLog.w("AOD_DEADLINE_SCHEDULE", "exact alarm failed; using handler fallback", it)
@@ -234,13 +309,12 @@ internal object AodDurationController {
             if (scheduled) {
                 AodLog.i(
                     "AOD_DEADLINE_SCHEDULE",
-                    "session=$expectedSession source=alarm remainingMs=$remainingMs triggerElapsed=$triggerAt",
+                    "session=$expectedSession source=idle-allowed-alarm remainingMs=$remainingMs triggerElapsed=$triggerAt",
                 )
                 return
             }
 
-            alarmManager = null
-            alarmListener = null
+            cancelReplayAlarm()
         }
 
         val fallback = Runnable { replayNativeOff(expectedSession, "handler-fallback") }
@@ -253,7 +327,7 @@ internal object AodDurationController {
     }
 
     private fun replayNativeOff(expectedSession: Long, source: String) {
-        if (!active.get() || sessionId != expectedSession) return
+        if (!active || sessionId != expectedSession) return
 
         val request = synchronized(stateLock) { pendingNativeOff } ?: return
         val elapsed = elapsedMs()
@@ -264,6 +338,15 @@ internal object AodDurationController {
 
         replayGuard.set(true)
         try {
+            // Hiding the rendered panoramic UI is a separate operation from
+            // switching the physical display OFF. Replay its native timeout
+            // callback first, so ColorOS performs its normal fade and cleanup.
+            val hide = synchronized(stateLock) { pendingNativeHide }
+            if (hide != null) {
+                AodLog.i("AOD_UI_HIDE_REPLAY", "session=$expectedSession elapsedMs=$elapsed")
+                hide.method.invoke(hide.receiver, 3)
+                return
+            }
             AodLog.i(
                 "AOD_NATIVE_OFF_REPLAY",
                 "session=$expectedSession state=${request.state} delayMs=${request.delayMs} reason=${request.reason}",
@@ -278,24 +361,25 @@ internal object AodDurationController {
             AodLog.e("AOD_NATIVE_OFF_REPLAY", "replay failed", t)
         } finally {
             replayGuard.set(false)
+            endSession("deadline replay complete", hidden = true)
         }
     }
 
-    private fun cancelReplayAlarm() {
-        alarmListener?.let { listener ->
-            runCatching { alarmManager?.cancel(listener) }
+    private fun cancelReplayAlarm() = synchronized(stateLock) {
+        alarmIntent?.let { operation ->
+            runCatching { alarmManager?.cancel(operation) }
+            runCatching { operation.cancel() }
         }
-        alarmListener = null
+        alarmIntent = null
         alarmManager = null
+        alarmReceiver?.let { receiver -> runCatching { alarmContext?.unregisterReceiver(receiver) } }
+        alarmReceiver = null
+        alarmContext = null
         fallbackRunnable?.let(mainHandler::removeCallbacks)
         fallbackRunnable = null
     }
 
-    private fun elapsedMs(): Long {
-        val start = sessionStartedAtMs
-        if (start <= 0L) return -1L
-        return (SystemClock.elapsedRealtime() - start).coerceAtLeast(0L)
-    }
+    private fun elapsedMs(): Long = session?.timing?.elapsedMs(SystemClock.elapsedRealtime()) ?: -1L
 
     private fun modeName(mode: Int): String = when (mode) {
         AodConfigContract.DURATION_MODE_SYSTEM -> "system"
@@ -317,4 +401,6 @@ internal object AodDurationController {
         val delayMs: Int,
         val reason: String,
     )
+
+    private data class NativeHideRequest(val receiver: Any, val method: Method)
 }

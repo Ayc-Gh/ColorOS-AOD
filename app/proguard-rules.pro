@@ -5,12 +5,5 @@
     public <init>();
 }
 
-# Miuix UI components used by Compose.
--keep class top.yukonga.miuix.** { *; }
-
-# Configuration model accessed across manager/hook code.
--keep class com.op.aod.enhance.data.** { *; }
--keep class com.op.aod.enhance.hook.AodConfig { *; }
--keep class com.op.aod.enhance.hook.AodConfigReader { *; }
-
+# UI and configuration code use direct calls; library consumer rules cover their own reflection.
 -dontwarn top.yukonga.miuix.**

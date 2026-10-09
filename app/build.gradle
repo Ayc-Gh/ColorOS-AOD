@@ -88,8 +88,8 @@ android {
         applicationId = 'com.op.aod.enhance'
         minSdk = 33
         targetSdk = 36
-        versionCode = 28
-        versionName = '1.10.0-rc1'
+        versionCode = 32
+        versionName = '1.10.0-rc5-usb'
     }
 
     splits {
@@ -132,7 +132,6 @@ dependencies {
     implementation libs.miuix.preference
     implementation libs.miuix.icons
     debugImplementation libs.androidx.compose.ui.tooling
-    debugImplementation libs.androidx.compose.ui.test.manifest
 
     compileOnly libs.libxposed.api
     implementation libs.libxposed.service

@@ -4,9 +4,9 @@ internal object AodSettingsHook {
     fun HookRuntime.hookAodAllDaySupportSettings() {
         val method=findMethod(SETTINGS_UTILS,"getKeyAodAllDaySupportSettings")
         intercept("aod.settings.all-day",method){chain->
-            chain.proceed()
+            val original = chain.proceed()
             val cfg=AodConfigReader.read(MainHook.hostAppContext)
-            val resultValue=if(cfg.enableSettingsSupport)1 else 0
+            val resultValue=if(cfg.enableSettingsSupport)1 else original
             AodLog.d("AOD_SETTINGS_HOOK","getKeyAodAllDaySupportSettings -> $resultValue enable=${cfg.enableSettingsSupport}")
             resultValue
         }

@@ -7,6 +7,17 @@ import com.op.aod.enhance.data.AodConfigContract
 internal object AodDurationPolicy {
     const val NATIVE_TIMEOUT_REASON = "Panoramic-Aod-Show"
 
+    fun shouldArmDeadline(state: Int, reason: String?, targetMs: Long?): Boolean =
+        state == Display.STATE_DOZE && reason == NATIVE_TIMEOUT_REASON && targetMs != null
+
+    fun shouldDeferEnergySavingHide(active: Boolean, mode: Int, elapsedMs: Long, targetMs: Long?): Boolean {
+        if (!active || elapsedMs < 0 || mode == AodConfigContract.DURATION_MODE_SYSTEM) return false
+        return mode == AodConfigContract.DURATION_MODE_ALWAYS || (targetMs != null && elapsedMs < targetMs)
+    }
+
+    fun shouldDeferClockHide(reason: Int?, active: Boolean, mode: Int, elapsedMs: Long, targetMs: Long?): Boolean =
+        (reason == 3 || reason == 12) && shouldDeferEnergySavingHide(active, mode, elapsedMs, targetMs)
+
     fun targetDurationMs(mode: Int, customMinutes: Int): Long? = when (mode) {
         AodConfigContract.DURATION_MODE_SYSTEM,
         AodConfigContract.DURATION_MODE_ALWAYS -> null
@@ -30,7 +41,9 @@ internal object AodDurationPolicy {
         mode: Int,
         elapsedMs: Long,
         targetMs: Long?,
+        visible: Boolean,
     ): Boolean {
+        if (!visible) return false
         if (state != Display.STATE_OFF) return false
         if (reason != NATIVE_TIMEOUT_REASON) return false
         if (mode == AodConfigContract.DURATION_MODE_SYSTEM) return false

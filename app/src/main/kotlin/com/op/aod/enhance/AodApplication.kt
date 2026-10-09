@@ -1,6 +1,7 @@
 package com.op.aod.enhance
 
 import android.app.Application
+import androidx.compose.runtime.mutableStateOf
 import com.op.aod.enhance.data.AodConfigStore
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
@@ -14,15 +15,17 @@ class AodApplication : Application(), XposedServiceHelper.OnServiceListener {
 
     override fun onServiceBind(service: XposedService) {
         serviceRef.set(service)
-        AodConfigStore.onXposedServiceBound(this, service)
+        configServiceConnected.value = AodConfigStore.onXposedServiceBound(this, service)
     }
 
     override fun onServiceDied(service: XposedService) {
         serviceRef.compareAndSet(service, null)
+        configServiceConnected.value = false
     }
 
     companion object {
         private val serviceRef = AtomicReference<XposedService?>(null)
+        val configServiceConnected = mutableStateOf(false)
 
         internal fun service(): XposedService? = serviceRef.get()
     }

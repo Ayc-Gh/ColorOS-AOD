@@ -18,6 +18,7 @@ object MainHook {
     val hostAppContext: Context? get()=cachedContext?:fetchContext()?.also{bindHostContext(it,"reflection-fallback")}
 
     fun install(module:XposedModule,classLoader:ClassLoader,hostPackage:String){
+        AodLog.bind(module)
         val runtime=HookRuntime(module,classLoader)
         AodConfigReader.bindPrefs(module.getRemotePreferences(AodConfigStore.PREFS_NAME),hostPackage)
         installContextCapture(runtime)

@@ -21,7 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.op.aod.enhance.data.AodConfigContract
 import com.op.aod.enhance.data.AodConfigStore
-import com.op.aod.enhance.data.AodUiConfig
+import com.op.aod.enhance.data.AodConfig
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -50,7 +50,7 @@ class FeaturesActivity : ComponentActivity() {
 }
 
 @Composable
-private fun FeaturesScreen(initial:AodUiConfig,onSave:(AodUiConfig)->Unit){
+private fun FeaturesScreen(initial:AodConfig,onSave:(AodConfig)->Unit){
     var enablePanoramic by remember{mutableStateOf(initial.enablePanoramic)}
     var enableSettingsSupport by remember{mutableStateOf(initial.enableSettingsSupport)}
     var blockSingleClick by remember{mutableStateOf(initial.blockSingleClick)}
@@ -59,7 +59,7 @@ private fun FeaturesScreen(initial:AodUiConfig,onSave:(AodUiConfig)->Unit){
     var durationCustomMinutes by remember{mutableStateOf(initial.aodDurationCustomMinutes.toString())}
     val currentOnSave by rememberUpdatedState(onSave)
     val context=LocalContext.current
-    fun update(transform:(AodUiConfig)->AodUiConfig){currentOnSave(transform(AodConfigStore.read(context)))}
+    fun update(transform:(AodConfig)->AodConfig){currentOnSave(transform(AodConfigStore.read(context)))}
 
     Scaffold(
         topBar={SmallTopAppBar(title="AOD功能设置",color=MiuixTheme.colorScheme.secondaryContainer)},
