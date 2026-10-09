@@ -32,6 +32,7 @@ jobs:
           fi
 
       - name: Configure stable signing
+        id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.AOD_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.AOD_STORE_PASSWORD }}
@@ -39,12 +40,12 @@ jobs:
           KEY_PASSWORD: ${{ secrets.AOD_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-              echo 'Tagged releases require the stable AOD signing secrets.' >&2
-              exit 1
-            fi
+            echo 'configured=false' >> "$GITHUB_OUTPUT"
+            echo 'No signing secrets configured. This run builds an unsigned validation artifact; publish the locally signed APK separately.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          test -n "$STORE_PASSWORD" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD"
+          echo 'configured=true' >> "$GITHUB_OUTPUT"
           python3 - <<'PY'
           import os, base64
           from pathlib import Path
@@ -61,6 +62,8 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --max-workers=1 testDebugUnitTest lintRelease assembleRelease
       - name: Verify release metadata and signing
+        env:
+          SIGNING_CONFIGURED: ${{ steps.signing.outputs.configured }}
         run: |
           APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
           test -n "$APK"
@@ -69,16 +72,18 @@ jobs:
           ! unzip -l "$APK" | grep -q 'assets/xposed_init'
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-            "$BT/apksigner" verify "$APK"
+            if [ "$SIGNING_CONFIGURED" = true ]; then
+              "$BT/apksigner" verify "$APK"
+            fi
             VERSION=$("$BT/aapt" dump badging "$APK" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
             test "${GITHUB_REF_NAME#v}" = "$VERSION"
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: ColorOS-AOD-release
+          name: ColorOS-AOD-${{ steps.signing.outputs.configured == 'true' && 'signed' || 'unsigned' }}
           path: app/build/outputs/apk/release/*.apk
       - name: Publish tagged release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && steps.signing.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
