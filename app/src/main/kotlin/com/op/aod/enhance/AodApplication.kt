@@ -15,12 +15,15 @@ class AodApplication : Application(), XposedServiceHelper.OnServiceListener {
 
     override fun onServiceBind(service: XposedService) {
         serviceRef.set(service)
-        configServiceConnected.value = AodConfigStore.onXposedServiceBound(this, service)
+        configServiceConnected.value = true
+        AodConfigStore.onXposedServiceBound(this, service)
     }
 
     override fun onServiceDied(service: XposedService) {
-        serviceRef.compareAndSet(service, null)
-        configServiceConnected.value = false
+        if (serviceRef.compareAndSet(service, null)) {
+            configServiceConnected.value = false
+            AodConfigStore.onXposedServiceDied()
+        }
     }
 
     companion object {

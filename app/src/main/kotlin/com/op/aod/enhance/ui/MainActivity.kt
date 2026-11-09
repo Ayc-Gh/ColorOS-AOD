@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -16,14 +18,14 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
-import top.yukonga.miuix.kmp.basic.Text
-import com.op.aod.enhance.AodApplication
+import com.op.aod.enhance.data.AodConfigStore
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AodConfigStore.read(this)
         setContent {
             MiuixTheme {
                 MainScreen(
@@ -53,15 +55,11 @@ private fun MainScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = if (AodApplication.configServiceConnected.value)
-                    "配置服务已连接；修改后在下一次息屏验证效果"
-                else "配置服务未连接；请在 LSPosed 启用模块，再重新打开本应用。修改会暂存于本机。",
-                modifier = Modifier.padding(horizontal = 8.dp),
-            )
+            ConfigSyncStatusCard()
             Card(colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.background)) {
                 ArrowPreference(
                     title = "AOD亮度设置",

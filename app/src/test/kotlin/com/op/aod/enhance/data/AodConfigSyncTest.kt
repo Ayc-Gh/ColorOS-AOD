@@ -15,8 +15,14 @@ class AodConfigSyncTest {
         }
     }
     private class Marker(var value: Boolean = false) : AodConfigSync.Pending {
+        var writable = true
+        var rejectClear = false
         override fun get() = value
-        override fun set(value: Boolean): Boolean { this.value = value; return true }
+        override fun set(value: Boolean): Boolean {
+            if (!writable || (!value && rejectClear)) return false
+            this.value = value
+            return true
+        }
     }
     private val custom = AodConfig(initDark = 123, blockSingleClick = false, aodDurationCustomMinutes = 17)
 
@@ -86,5 +92,92 @@ class AodConfigSyncTest {
         assertEquals(AodConfigContract.MAX_AOD_DURATION_CUSTOM_MINUTES, parsed.aodDurationCustomMinutes)
         assertTrue(parsed.runningMultiplier.isFinite())
         assertEquals(parsed, AodConfigCodec.decode(AodConfigCodec.encode(parsed)))
+    }
+
+    @Test fun offlineWriteShowsPendingThenReconnectShowsSynced() {
+        val local = Memory()
+        val sync = AodConfigSync(local, Marker())
+        assertTrue(sync.write(custom) { null })
+        assertEquals(AodSyncState.PENDING, sync.status.state)
+        assertTrue(sync.status.hasPendingChanges)
+        val remote = Memory()
+        assertTrue(sync.bind(remote))
+        assertEquals(AodSyncState.SYNCED, sync.status.state)
+        assertFalse(sync.status.hasPendingChanges)
+        assertEquals(custom, AodConfigCodec.decode(remote.values))
+    }
+
+    @Test fun onlineWriteRequiresSuccessfulRemoteCommitForSyncedStatus() {
+        val sync = AodConfigSync(Memory(), Marker())
+        val remote = Memory()
+        assertTrue(sync.write(custom) { remote })
+        assertEquals(AodSyncState.SYNCED, sync.status.state)
+        assertEquals(custom, AodConfigCodec.decode(remote.values))
+    }
+
+    @Test fun remoteCommitFailureIsDistinctFromOfflineAndRetryPreservesEdit() {
+        val sync = AodConfigSync(Memory(), Marker())
+        val remote = Memory().apply { writable = false }
+        assertTrue(sync.write(custom) { remote })
+        assertEquals(AodSyncState.FAILED, sync.status.state)
+        assertEquals(AodSyncIssue.REMOTE, sync.status.issue)
+        assertEquals(custom, sync.read { remote })
+        assertEquals(AodSyncState.FAILED, sync.status.state)
+        remote.writable = true
+        assertTrue(sync.bind(remote))
+        assertEquals(AodSyncState.SYNCED, sync.status.state)
+        assertEquals(custom, AodConfigCodec.decode(remote.values))
+    }
+
+    @Test fun disconnectRevokesSyncedStatusWithoutInventingAnUnsentEdit() {
+        val sync = AodConfigSync(Memory(), Marker())
+        assertTrue(sync.bind(Memory(custom)))
+        sync.disconnected()
+        assertEquals(AodSyncState.PENDING, sync.status.state)
+        assertFalse(sync.status.hasPendingChanges)
+        assertEquals(custom, sync.read { null })
+    }
+
+    @Test fun failedLocalSaveIsNotReportedAsAnOfflineSuccess() {
+        val local = Memory().apply { writable = false }
+        val sync = AodConfigSync(local, Marker())
+        assertFalse(sync.write(custom) { null })
+        assertEquals(AodSyncIssue.LOCAL_SAVE, sync.status.issue)
+        sync.disconnected()
+        assertEquals(AodSyncState.FAILED, sync.status.state)
+        assertNotEquals(custom, sync.read { null })
+    }
+
+    @Test fun failedPendingMarkerDoesNotWriteRemoteOrReportSynced() {
+        val remote = Memory()
+        val sync = AodConfigSync(Memory(), Marker().apply { writable = false })
+        assertFalse(sync.write(custom) { remote })
+        assertEquals(AodSyncIssue.LOCAL_SAVE, sync.status.issue)
+        assertEquals(AodSyncState.FAILED, sync.status.state)
+        assertTrue(remote.values.isEmpty())
+    }
+
+    @Test fun failedConfirmationRemainsRetryableEvenAfterRemoteCommit() {
+        val marker = Marker().apply { rejectClear = true }
+        val sync = AodConfigSync(Memory(), marker)
+        val remote = Memory()
+        assertTrue(sync.write(custom) { remote })
+        assertEquals(AodSyncIssue.CONFIRMATION, sync.status.issue)
+        assertEquals(AodSyncState.FAILED, sync.status.state)
+        assertTrue(marker.value)
+        marker.rejectClear = false
+        assertTrue(sync.bind(remote))
+        assertEquals(AodSyncState.SYNCED, sync.status.state)
+        assertFalse(marker.value)
+    }
+
+    @Test fun remoteReadExceptionRetainsFallbackAndReportsFailureUntilRetry() {
+        val sync = AodConfigSync(Memory(), Marker())
+        assertTrue(sync.bind(Memory(custom)))
+        assertEquals(custom, sync.read { error("bridge disconnected") })
+        assertEquals(AodSyncState.FAILED, sync.status.state)
+        assertEquals(AodSyncIssue.REMOTE, sync.status.issue)
+        assertTrue(sync.bind(Memory(custom)))
+        assertEquals(AodSyncState.SYNCED, sync.status.state)
     }
 }
