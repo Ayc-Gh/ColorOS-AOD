@@ -19,6 +19,7 @@ object MainHook {
 
     fun install(module:XposedModule,classLoader:ClassLoader,hostPackage:String){
         AodLog.bind(module)
+        HostDiagnostics.bind(module.getRemotePreferences("aod_runtime_status"), hostPackage)
         val runtime=HookRuntime(module,classLoader)
         AodConfigReader.bindPrefs(module.getRemotePreferences(AodConfigStore.PREFS_NAME),hostPackage)
         installContextCapture(runtime)
@@ -50,6 +51,7 @@ object MainHook {
         val app=context.applicationContext?:context
         val first=cachedContext==null
         cachedContext=app
+        HostDiagnostics.attach(app)
         if(first)AodLog.i("HOST_CONTEXT","bound source=$source package=${app.packageName}")
     }
 
@@ -58,8 +60,12 @@ object MainHook {
     }.getOrNull()
 
     private inline fun HookRuntime.hookWithLog(name:String,block:HookRuntime.()->Unit){
+        feature = name
+        HostDiagnostics.registry.begin(name)
         AodLog.i("HOOK_REGISTER","start name=$name")
-        runCatching{block()}.onSuccess{AodLog.i("HOOK_REGISTER","success name=$name")}.onFailure{AodLog.e("HOOK_REGISTER","failed name=$name",it)}
+        runCatching{block()}.onFailure{failure(it.message ?: it.javaClass.simpleName);AodLog.e("HOOK_REGISTER","failed name=$name",it)}
+        val status = HostDiagnostics.registry.snapshot().first { it.name == name }
+        AodLog.i("HOOK_REGISTER", "result=${status.state} name=$name paths=${status.paths.size} failures=${status.failures.size} skipped=${status.skipped.size}")
     }
 
     private const val SYSTEM_UI="com.android.systemui"

@@ -30,6 +30,7 @@
             android:name=".ui.FeaturesActivity"
             android:configChanges="orientation|screenSize|screenLayout"
             android:exported="false" />
+        <activity android:name=".ui.RuntimeStatusActivity" android:exported="false" />
 
     </application>
 

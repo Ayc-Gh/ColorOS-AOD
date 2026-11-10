@@ -9,6 +9,9 @@ internal class HookRuntime(
     val module: XposedModule,
     val classLoader: ClassLoader,
 ) {
+    var feature: String = "Context"
+    fun failure(detail: String) = HostDiagnostics.registry.failed(feature, detail)
+    fun skipped(detail: String) = HostDiagnostics.registry.skipped(feature, detail)
     fun findClass(name: String): Class<*> = Class.forName(name, false, classLoader)
 
     fun findMethod(
@@ -47,12 +50,18 @@ internal class HookRuntime(
         block: (XposedInterface.Chain) -> Any?,
     ): XposedInterface.HookHandle {
         val firstHit = AtomicBoolean(true)
-        return module.hook(method)
+        val owner = feature
+        val handle = module.hook(method)
         .setId(id)
         .setExceptionMode(XposedInterface.ExceptionMode.DEFAULT)
         .intercept { chain ->
-            if (firstHit.getAndSet(false)) AodLog.i("HOOK_HIT", "id=$id method=${method.declaringClass.name}#${method.name}")
+            if (firstHit.getAndSet(false)) {
+                AodLog.i("HOOK_HIT", "id=$id method=${method.declaringClass.name}#${method.name}")
+                HostDiagnostics.registry.hit(owner, id)
+            }
             block(chain)
         }
+        HostDiagnostics.registry.registered(owner, id, "${method.declaringClass.simpleName}.${method.name}(${method.parameterTypes.joinToString { it.simpleName }})")
+        return handle
     }
 }

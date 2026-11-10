@@ -98,7 +98,7 @@ internal object AodDurationController {
                 AodLog.i("AOD_UI_HIDE_DEFER", "session=$sessionId reason=$reason elapsedMs=${elapsedMs()} targetMs=$sessionTargetMs")
                 null
             }
-        }.onFailure { AodLog.e("DURATION_HOOK", "Panoramic energy-saving hide unavailable", it) }
+        }.onFailure { failure("全景自动隐藏入口不完整"); AodLog.e("DURATION_HOOK", "Panoramic energy-saving hide unavailable", it) }
     }
 
     private fun HookRuntime.installLifecycleHooks() {
@@ -114,6 +114,7 @@ internal object AodDurationController {
         }.onSuccess {
             AodLog.i("DURATION_HOOK", "DozeService.onDreamingStarted registered")
         }.onFailure {
+            failure("息屏会话开始入口不可用")
             AodLog.e("DURATION_HOOK", "DozeService.onDreamingStarted unavailable", it)
         }
 
@@ -126,6 +127,7 @@ internal object AodDurationController {
         }.onSuccess {
             AodLog.i("DURATION_HOOK", "DozeService.onDreamingStopped registered")
         }.onFailure {
+            failure("息屏会话结束入口不可用")
             AodLog.e("DURATION_HOOK", "DozeService.onDreamingStopped unavailable", it)
         }
 

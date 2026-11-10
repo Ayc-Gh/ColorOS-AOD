@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
                 MainScreen(
                     onOpenBrightness = { startActivity(Intent(this, BrightnessActivity::class.java)) },
                     onOpenFeatures = { startActivity(Intent(this, FeaturesActivity::class.java)) },
+                    onOpenStatus = { startActivity(Intent(this, RuntimeStatusActivity::class.java)) },
                 )
             }
         }
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
 private fun MainScreen(
     onOpenBrightness: () -> Unit,
     onOpenFeatures: () -> Unit,
+    onOpenStatus: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -71,6 +73,7 @@ private fun MainScreen(
                     summary = "系统界面、息屏设置与唤醒行为",
                     onClick = onOpenFeatures,
                 )
+                ArrowPreference(title = "功能运行状态", summary = "检查新版是否加载，以及各功能是否已触发", onClick = onOpenStatus)
             }
         }
     }
