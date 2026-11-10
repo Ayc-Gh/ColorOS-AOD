@@ -27,9 +27,12 @@ internal object HostDiagnostics {
             override fun onReceive(ctx: Context, intent: Intent) {
                 if (intent.action != RuntimeProtocol.QUERY) return
                 val nonce = intent.getStringExtra(RuntimeProtocol.NONCE) ?: return
-                // This capability is held in the manager's private framework preferences.
-                if (nonce.length !in 32..64 || nonce != runCatching { prefs?.getString(RuntimeProtocol.NONCE, null) }.getOrNull()) return
-                if (Build.VERSION.SDK_INT >= 34 && sentFromUid != runCatching { ctx.packageManager.getPackageUid(RuntimeProtocol.APP, 0) }.getOrNull()) return
+                if (nonce.length !in 32..64) return
+                if (Build.VERSION.SDK_INT >= 34) {
+                    // Sender identity is authoritative; a remote preference cache may
+                    // still contain the previous request token just after an update.
+                    if (sentFromUid != runCatching { ctx.packageManager.getPackageUid(RuntimeProtocol.APP, 0) }.getOrNull()) return
+                } else if (nonce != runCatching { prefs?.getString(RuntimeProtocol.NONCE, null) }.getOrNull()) return
                 val data = JSONObject().put("host", host).put("version", BuildConfig.VERSION_NAME).put("code", BuildConfig.VERSION_CODE)
                 val features = JSONArray()
                 registry.snapshot().filter { it.name != "Context" }.forEach { s ->
